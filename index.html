@@ -34,7 +34,7 @@
 <div id="app"></div>
 
 <div class="panel">
-  <h1>디큐브 프리비즈 <span>· 도깨비 놀음</span> <span style="color:#5b616b;font-weight:400;font-size:10px">빌드 0720B</span></h1>
+  <h1>디큐브 프리비즈 <span>· 도깨비 놀음</span> <span style="color:#5b616b;font-weight:400;font-size:10px">빌드 0720C</span></h1>
   <div class="row">
     <button id="btnView">1인칭으로 보기 (V)</button>
     <button id="btnFig" class="on">사람·함</button>
@@ -333,13 +333,28 @@ function drawVideoFrames(){
   }else if(viewMode==='strip'){
     const v=vids.all; if(!v||v.readyState<2) return;
     const vw=v.videoWidth, vh=v.videoHeight; if(!vw||!vh) return;
-    ['left','front','right'].forEach((k,i)=>{           // 벽: 위 1536/1792 구간만 사용
-      const f=FACES[k];
-      f.g.drawImage(v, SEGX[i]*vw,0,(SEGX[i+1]-SEGX[i])*vw,WALLY*vh, 0,0,f.cw,f.ch);
-      f.tex.needsUpdate=true;
-    });
-    ceilRotDraw(v, SEGX[3]*vw,0,(SEGX[4]-SEGX[3])*vw,vh);   // 천장: 풀높이 + 회전(왼쪽 변=정면)
-    FACES.ceil.tex.needsUpdate=true;
+    if(isStripRatio(vw,vh)){                            // 제작 규격: 공식 4면 분할
+      ['left','front','right'].forEach((k,i)=>{         // 벽: 위 1536/1792 구간만 사용
+        const f=FACES[k];
+        f.g.drawImage(v, SEGX[i]*vw,0,(SEGX[i+1]-SEGX[i])*vw,WALLY*vh, 0,0,f.cw,f.ch);
+        f.tex.needsUpdate=true;
+      });
+      ceilRotDraw(v, SEGX[3]*vw,0,(SEGX[4]-SEGX[3])*vw,vh);   // 천장: 풀높이 + 회전(왼쪽 변=정면)
+      FACES.ceil.tex.needsUpdate=true;
+    }else{                                              // 일반 영상: 3면 파노라마(커버), 천장 끔
+      const BAND=3456;                                  // 좌1280+정면896+우1280 (10+7+10m × 6m)
+      const s=Math.max(BAND/vw, 768/vh);
+      const sw=BAND/s, sh=768/s, sx0=(vw-sw)/2, sy0=(vh-sh)/2;
+      const X=[0,1280,2176,3456];
+      ['left','front','right'].forEach((k,i)=>{
+        const f=FACES[k];
+        f.g.drawImage(v, sx0+X[i]/s, sy0, (X[i+1]-X[i])/s, sh, 0,0,f.cw,f.ch);
+        f.tex.needsUpdate=true;
+      });
+      const cg2=FACES.ceil.g;
+      cg2.fillStyle='#000'; cg2.fillRect(0,0,FACES.ceil.cw,FACES.ceil.ch);
+      FACES.ceil.tex.needsUpdate=true;
+    }
   }
 }
 function activeVids(){
@@ -383,7 +398,8 @@ function updateWarn(){
   const w=document.getElementById('mapWarn');
   const v=vids.all;
   if(viewMode==='strip' && v && v.videoWidth && !isStripRatio(v.videoWidth,v.videoHeight)){
-    w.textContent='주의: 전체 슬롯 영상('+v.videoWidth+'×'+v.videoHeight+')이 9472×1792 비율이 아니라 4면이 어긋나 보일 수 있다. 면별로 보려면 "개별 영상"을 쓰면 된다.';
+    w.textContent='일반 비율 영상('+v.videoWidth+'×'+v.videoHeight+'): 3면 파노라마로 두르고 천장은 끈다. 4면 전체를 쓰려면 9472×1792 스트립 규격으로 제작. 정면 한 면만 보려면 "개별 영상"의 정면 슬롯.';
+    w.style.color='#4fd4bf';
     w.style.display='block';
   }else w.style.display='none';
 }
