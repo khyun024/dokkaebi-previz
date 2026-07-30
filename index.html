@@ -34,7 +34,7 @@
 <div id="app"></div>
 
 <div class="panel">
-  <h1>디큐브 프리비즈 <span>· 도깨비 놀음</span> <span style="color:#5b616b;font-weight:400;font-size:10px">빌드 0730A</span></h1>
+  <h1>디큐브 프리비즈 <span>· 도깨비 놀음</span> <span style="color:#5b616b;font-weight:400;font-size:10px">빌드 0731A</span></h1>
   <div class="row">
     <button id="btnView">1인칭으로 보기 (V)</button>
     <button id="btnFig" class="on">사람·함</button>
@@ -220,21 +220,41 @@ const figures=new THREE.Group();
 }
 scene.add(figures);
 
-// ── 시뮬레이션 배우: 가락(주황)·덩기(청록) + 관객 반원 + 플레이어(함) ──
+// ── 시뮬레이션 배우: 인체형(머리·몸통·팔·다리) 가락(주황)·덩기(청록) ──
 const actors=new THREE.Group();
 function mkActor(col,h){
   const g=new THREE.Group();
-  const mat=new THREE.MeshStandardMaterial({color:col,roughness:.5,emissive:col,emissiveIntensity:.3});
-  const body=new THREE.Mesh(new THREE.CylinderGeometry(.15,.18,h,10),mat); body.position.y=h/2;
-  const head=new THREE.Mesh(new THREE.SphereGeometry(.13,14,10),mat); head.position.y=h+0.13;
-  g.add(body,head); return g;
+  const mat=new THREE.MeshStandardMaterial({color:col,roughness:.5,emissive:col,emissiveIntensity:.26});
+  const legH=h*0.46, torH=h*0.34, headR=h*0.105, armH=h*0.4;
+  const legGeo=new THREE.CylinderGeometry(h*0.034,h*0.028,legH,8); legGeo.translate(0,-legH/2,0);
+  const legL=new THREE.Mesh(legGeo,mat); legL.position.set(-h*0.055,legH,0);
+  const legR=new THREE.Mesh(legGeo,mat); legR.position.set(h*0.055,legH,0);
+  const torso=new THREE.Mesh(new THREE.CylinderGeometry(h*0.078,h*0.058,torH,10),mat);
+  torso.position.y=legH+torH/2;
+  const head=new THREE.Mesh(new THREE.SphereGeometry(headR,14,10),mat);
+  head.position.y=legH+torH+headR*1.15;
+  const armGeo=new THREE.CylinderGeometry(h*0.024,h*0.019,armH,8); armGeo.translate(0,-armH/2,0);
+  const armL=new THREE.Mesh(armGeo,mat); armL.position.set(-h*0.1,legH+torH*0.94,0);
+  const armR=new THREE.Mesh(armGeo,mat); armR.position.set(h*0.1,legH+torH*0.94,0);
+  g.add(legL,legR,torso,head,armL,armR);
+  g.userData={legL,legR,armL,armR};
+  return g;
 }
-const garak=mkActor(0xf08a3c,1.2);     // 가락 (여자 배우)
-const deonggi=mkActor(0x4fd4bf,1.35);  // 덩기 (남자 배우)
+const garak=mkActor(0xf08a3c,1.55);     // 가락 (여자 배우)
+const deonggi=mkActor(0x4fd4bf,1.72);   // 덩기 (남자 배우)
 function setActor(a,x,z,o){ o=o||{};
   a.position.set(x,o.y||0,z);
-  a.rotation.z=o.lean||0; a.rotation.x=o.tilt||0;
+  a.rotation.set(o.tilt||0,o.face||0,o.lean||0);
   const s=(o.s==null)?1:o.s; a.scale.set(1,s,1);
+  const u=a.userData, ph=o.phase||0, w=Math.min(1,o.walk||0);
+  const sw=Math.sin(ph)*w*0.55;
+  u.legL.rotation.x=sw; u.legR.rotation.x=-sw;                       // 걸음: 다리 스윙
+  u.armL.rotation.set(0,0,0.14); u.armR.rotation.set(0,0,-0.14);    // 기본: 살짝 벌린 팔
+  if(o.arms==='up'){ u.armL.rotation.z=2.55; u.armR.rotation.z=-2.55; }            // 양팔 위로
+  else if(o.arms==='front'){ u.armL.rotation.x=-1.35; u.armR.rotation.x=-1.35; }   // 앞으로 뻗기
+  else if(o.arms==='point'){ u.armR.rotation.x=-2.1; }                             // 한 팔로 가리키기
+  else if(o.arms==='wave'){ u.armR.rotation.z=-2.6+Math.sin(ph)*0.4; }             // 손 흔들기
+  else { u.armL.rotation.x=-sw*0.8; u.armR.rotation.x=sw*0.8; }                    // 걸음 반대 스윙
 }
 const audGroup=new THREE.Group();       // 관객 반원 대형(참고 마커)
 for(let i=0;i<7;i++){ const ang=Math.PI*(0.18+0.64*i/6);
@@ -252,6 +272,63 @@ simHamEdge.position.copy(simHam.position);
 actors.add(garak,deonggi,audGroup,simHam,simHamEdge);
 actors.visible=false;
 scene.add(actors);
+
+// ── 씬별 3D 입자 레이어 (방 공간을 채우는 실감 효과) ──
+const fx=new THREE.Group(); fx.visible=false; scene.add(fx);
+const FXN=320;
+const fxGeo=new THREE.BufferGeometry();
+const fxPos=new Float32Array(FXN*3), fxColA=new Float32Array(FXN*3);
+fxGeo.setAttribute('position',new THREE.BufferAttribute(fxPos,3));
+fxGeo.setAttribute('color',new THREE.BufferAttribute(fxColA,3));
+const fxMat=new THREE.PointsMaterial({size:0.06,vertexColors:true,transparent:true,opacity:0.9,
+  depthWrite:false,blending:THREE.AdditiveBlending});
+const fxPts=new THREE.Points(fxGeo,fxMat); fx.add(fxPts);
+const fxH=(i,k)=>{ const v=Math.sin(i*127.1+k*311.7)*43758.5453; return v-Math.floor(v); };
+function updateFX(mode,t,p){
+  fxPts.visible=!!mode;
+  if(!mode) return;
+  let size=0.06;
+  for(let i=0;i<FXN;i++){
+    let x=0,y=-30,z=0,r=1,g=1,b=1;
+    const h1=fxH(i,1),h2=fxH(i,2),h3=fxH(i,3);
+    if(mode==='dust'){ if(i<140){ x=(h1-0.5)*6.6+Math.sin(t*0.25+i*1.7)*0.15; z=(h2-0.5)*9.4;
+        y=0.3+h3*5.2+Math.sin(t*0.4+i)*0.12; r=0.5;g=0.48;b=0.42; } size=0.045;
+    }else if(mode==='suck'){ if(i<200){ const ph=(t*(0.22+h3*0.3)+h1)%1;   // 정면 입으로 빨려드는 입자
+        const sx=(h1-0.5)*6.8, sy=0.2+h2*5.4, sz=(h2-0.5)*9;
+        x=sx*(1-ph); y=sy+(3.1-sy)*ph; z=sz+(-4.8-sz)*ph;
+        const br=0.3+0.6*ph; r=br;g=br*0.95;b=br*0.86; } size=0.05;
+    }else if(mode==='speed'){ if(i<220){ x=(h1-0.5)*6.8; y=0.3+h2*5.2;    // 질주: 입자가 몸을 스쳐 지나간다
+        z=-5.2+((h3*12+t*(6+h1*5))%11.6); const br=0.45+0.4*h2; r=br;g=br;b=br*0.9; } size=0.055;
+    }else if(mode==='orbs'){ if(i<12){ const gather=Math.min(1,Math.max(0,(p-0.25)/0.6));   // 빛 부품 12개
+        const bx=(h1-0.5)*6.4, by=0.6+h2*4.6, bz=(h3-0.5)*8.6;
+        x=bx*(1-gather)+Math.sin(t*1.1+i)*0.2*(1-gather);
+        y=by+(2.4-by)*gather+Math.cos(t*0.9+i*1.7)*0.2*(1-gather);
+        z=bz+(-3.4-bz)*gather;
+        r=1;g=0.87;b=0.6; } size=0.22;
+    }else if(mode==='sparks'){ if(i<160){ const wall=i%3;                  // 벽을 타고 오르는 불꽃
+        const yy=(h2*6+t*(0.5+h3*0.7))%5.8;
+        if(wall===0){ x=-3.35; z=(h1-0.5)*9.4; } else if(wall===1){ x=3.35; z=(h1-0.5)*9.4; }
+        else { x=(h1-0.5)*6.6; z=-4.85; }
+        y=yy;
+        const c=[[0.31,0.83,0.75],[0.94,0.54,0.24],[0.42,0.63,0.9],[0.88,0.35,0.54]][i%4];
+        r=c[0];g=c[1];b=c[2]; } size=0.06;
+    }else if(mode==='confetti'){                                           // 파티: 방 전체에 색종이
+        const c=[[0.31,0.83,0.75],[0.94,0.54,0.24],[0.42,0.63,0.9],[0.88,0.35,0.54],[0.88,0.78,0.29]][i%5];
+        const ang=t*(0.3+h3*0.3)+h1*6.283, rad=1.2+h2*2.3;
+        x=Math.cos(ang)*rad; z=Math.sin(ang)*rad*1.4;
+        y=5.8-((h3*6+t*(0.8+h1*0.8))%5.9);
+        r=c[0];g=c[1];b=c[2]; size=0.07;
+    }else if(mode==='warm'){ if(i<70){ x=(h1-0.5)*6; z=(h2-0.5)*8;         // 따뜻한 기억의 티끌
+        y=0.4+((h3*5+t*0.15)%5); r=0.92;g=0.8;b=0.56; } size=0.05;
+    }
+    fxPos[i*3]=x; fxPos[i*3+1]=y; fxPos[i*3+2]=z;
+    fxColA[i*3]=r; fxColA[i*3+1]=g; fxColA[i*3+2]=b;
+  }
+  fxMat.size=size;
+  fxGeo.attributes.position.needsUpdate=true;
+  fxGeo.attributes.color.needsUpdate=true;
+}
+
 
 
 // ── 카메라 컨트롤 (궤도 + 1인칭) ──────────────
@@ -448,7 +525,7 @@ function applyMode(m){
   document.getElementById('slotsFaces').style.display = m==='faces'?'block':'none';
   document.getElementById('slotsAll').style.display   = m==='strip'?'block':'none';
   document.getElementById('runRow').style.display     = (m==='faces'||m==='strip')?'flex':'none';
-  actors.visible=(m==='sim');
+  actors.visible=(m==='sim'); fx.visible=(m==='sim');
   figures.visible=(m!=='sim')&&figOn;
   updateWarn(); syncButtons(); syncRun();
 }
@@ -499,19 +576,27 @@ function gob(g,x,y,r,col,eye){                      // 검은 도깨비: 몸+뿔
   g.beginPath(); g.moveTo(x-r*0.55,y-r*0.75); g.lineTo(x-r*0.85,y-r*1.5); g.lineTo(x-r*0.1,y-r*0.95); g.closePath(); g.fill();
   g.beginPath(); g.moveTo(x+r*0.55,y-r*0.75); g.lineTo(x+r*0.85,y-r*1.5); g.lineTo(x+r*0.1,y-r*0.95); g.closePath(); g.fill();
   if(eye){ g.fillStyle=eye; g.fillRect(x-r*0.42,y-r*0.2,r*0.26,r*0.26); g.fillRect(x+r*0.16,y-r*0.2,r*0.26,r*0.26); } }
-function factory(t,dim){                            // 파노라마 공장 실루엣
-  for(let i=0;i<9;i++){ const x=110+i*292; wg.fillStyle='rgba(16,18,22,.85)'; wg.fillRect(x,80,24,WH-80); }
-  wg.fillStyle='rgba(16,18,22,.85)'; wg.fillRect(0,96,WW,14);
+function factory(t,dim){                            // 파노라마 공장 실루엣 (원경+근경 2겹)
+  for(let i=0;i<12;i++){ const x=(i*236+40)%WW;                       // 원경: 작고 흐린 기계들
+    wg.fillStyle='rgba(14,16,20,.55)'; wg.fillRect(x,WH*0.34,66,WH*0.3); }
+  wg.fillStyle='rgba(200,190,165,'+(0.02+dim*0.03)+')';               // 원경 안개
+  wg.fillRect(0,WH*0.3,WW,WH*0.34);
+  for(let i=0;i<9;i++){ const x=110+i*292; wg.fillStyle='rgba(16,18,22,.88)'; wg.fillRect(x,80,24,WH-80); }
+  wg.fillStyle='rgba(16,18,22,.88)'; wg.fillRect(0,96,WW,14);
   for(let i=0;i<6;i++){ const x=210+i*430; wg.fillStyle=`rgba(210,195,160,${0.04+dim*0.06})`; wg.fillRect(x,34,120,54); }
-  for(let i=0;i<7;i++){ const x=(i*386+60)%WW; wg.fillStyle='rgba(20,23,28,.9)'; wg.fillRect(x,WH-150-(i%3)*36,150,150+(i%3)*36); }
-  for(let i=0;i<4;i++){ const x=340+i*640; wReel(x,WH*0.42,58,0,`rgba(46,50,60,${0.5+dim*0.3})`,4); } }
+  for(let i=0;i<7;i++){ const x=(i*386+60)%WW; wg.fillStyle='rgba(20,23,28,.94)'; wg.fillRect(x,WH-150-(i%3)*36,150,150+(i%3)*36); }
+  for(let i=0;i<4;i++){ const x=340+i*640; wReel(x,WH*0.42,58,0,`rgba(46,50,60,${0.5+dim*0.3})`,4); }
+  for(let i=0;i<10;i++){ const yy=WH-8-i*7;                           // 바닥 원근 그리드
+    wg.strokeStyle=`rgba(120,115,105,${0.02+i*0.006})`; wg.lineWidth=1;
+    wg.beginPath(); wg.moveTo(0,yy); wg.lineTo(WW,yy); wg.stroke(); } }
 const LRP=(a,b,k)=>a+(b-a)*Math.max(0,Math.min(1,k));
+const FDIR=(vx,vz)=>Math.atan2(vx,vz);
 const PCOL=['#4fd4bf','#f08a3c','#6aa0e5','#e05a8a','#e0c84a'];
 
 // ── v4 시나리오 (0730) · 프리셋 + S#1~9 + 엔딩 = 11씬 ──
-// 영상 내 텍스트 없음(v4 원칙) · draw(t,p)=4면 미디어 · act(t,p)=가락(주황)·덩기(청록) 동선
+// draw(t,p)=4면 미디어 · act(t,p)=배우 동선 · fx=씬별 3D 입자 레이어
 const SCENES=[
-{id:'프리셋',t:'입장 · 멈춘 공장',tc:'입장~0:00',draw:(t,p)=>{
+{id:'프리셋',t:'입장 · 멈춘 공장',tc:'입장~0:00',fx:'dust',draw:(t,p)=>{
   wg.fillStyle='#07080a'; wg.fillRect(0,0,WW,WH);
   factory(t,0.15);
   if(p>0.6){ wg.fillStyle=`rgba(240,220,180,${0.06*(p-0.6)/0.4})`; wg.fillRect(0,0,WW,WH); }  // 덩기가 조명을 켠다
@@ -521,11 +606,13 @@ const SCENES=[
   for(let i=0;i<4;i++){ const y=140+i*230; cg.beginPath(); cg.moveTo(0,y); cg.lineTo(CWc,y); cg.stroke(); }
 },act:(t,p)=>{
   const a=t*0.55;                                     // 가락: 관객 사이 배회하며 흉내
-  setActor(garak, 2.1*Math.cos(a), 1.5+0.9*Math.sin(a), {y:Math.abs(Math.sin(t*4))*0.05});
-  if(p<0.55) setActor(deonggi, 0.4, 5.3, {});          // 덩기: 입구 밖 대기
-  else setActor(deonggi, Math.sin(t*1.8)*2.4, LRP(5.3,1.2,(p-0.55)/0.35), {y:Math.abs(Math.sin(t*5))*0.06, lean:Math.sin(t*3)*0.1});
+  setActor(garak,2.1*Math.cos(a),1.5+0.9*Math.sin(a),
+    {y:Math.abs(Math.sin(t*4))*0.05,walk:0.6,phase:t*7,face:FDIR(-Math.sin(a),0.43*Math.cos(a))});
+  if(p<0.55) setActor(deonggi,0.4,5.3,{face:Math.PI});                // 덩기: 입구 밖 대기
+  else setActor(deonggi,Math.sin(t*1.8)*2.4,LRP(5.3,1.2,(p-0.55)/0.35),
+    {y:Math.abs(Math.sin(t*5))*0.06,walk:0.9,phase:t*9,face:FDIR(Math.cos(t*1.8),-0.6)});
 }},
-{id:'S#1',t:'테이프 · DJ 언니에게',tc:'0:00~1:30',draw:(t,p)=>{
+{id:'S#1',t:'테이프 · DJ 언니에게',tc:'0:00~1:30',fx:'dust',draw:(t,p)=>{
   wg.fillStyle='#0a0b0e'; wg.fillRect(0,0,WW,WH);
   factory(t,0.4);
   const gr=wg.createRadialGradient(FXC,WH*0.6,10,FXC,WH*0.6,240);   // 테이프의 존재감: 빛 웅덩이
@@ -537,16 +624,17 @@ const SCENES=[
   cClear('#07080b'); cReel(CCX,CHc*0.72,120,0,'#161a21',5);
 },act:(t,p)=>{
   if(p<0.8){
-    const dx=2.2*Math.sin(t*0.45);                     // 덩기: 테이프 들고 관객 사이 가로지르기
-    setActor(deonggi, dx, 0.3, {y:0.07+Math.abs(Math.sin(t*3.4))*0.04});
-    setActor(garak, dx-1.15*Math.cos(t*3), 1.1+0.5*Math.sin(t*3), {y:Math.abs(Math.sin(t*7))*0.08, lean:Math.sin(t*3)*0.2});
+    const dx=2.2*Math.sin(t*0.45), vx=Math.cos(t*0.45);              // 덩기: 테이프 들고 관객 사이 가로지르기
+    setActor(deonggi,dx,0.3,{y:0.05+Math.abs(Math.sin(t*3.4))*0.04,walk:0.7,phase:t*6.5,face:FDIR(vx,0.12),arms:'up'});
+    const gx=dx-1.15*Math.cos(t*3), gz=1.1+0.5*Math.sin(t*3);        // 가락: 톰과 제리 추격
+    setActor(garak,gx,gz,{y:Math.abs(Math.sin(t*7))*0.08,walk:1,phase:t*11,face:FDIR(dx-gx,0.3-gz),lean:Math.sin(t*3)*0.15});
   }else{                                               // 팽팽한 줄다리기
-    const sh=Math.sin(t*9)*0.1;
-    setActor(garak,-0.55+sh,-0.9,{lean:-0.3+sh});
-    setActor(deonggi,0.55+sh,-0.9,{lean:0.3+sh});
+    const sh=Math.sin(t*9)*0.08;
+    setActor(garak,-0.55+sh,-0.9,{lean:-0.3+sh,face:Math.PI/2,arms:'front'});
+    setActor(deonggi,0.55+sh,-0.9,{lean:0.3+sh,face:-Math.PI/2,arms:'front'});
   }
 }},
-{id:'S#2',t:'모두가 플레이어 안으로',tc:'1:30~3:00',draw:(t,p)=>{
+{id:'S#2',t:'모두가 플레이어 안으로',tc:'1:30~3:00',fx:'suck',draw:(t,p)=>{
   wg.fillStyle='#0b0c10'; wg.fillRect(0,0,WW,WH);
   const cy=WH*0.52, pull=Math.min(1,p*1.4);
   for(let i=0;i<70;i++){                               // 그림자가 플레이어 입으로 늘어난다
@@ -557,34 +645,40 @@ const SCENES=[
     wg.strokeStyle=`rgba(190,182,168,${0.05+0.3*drift})`; wg.lineWidth=(1-drift)*9+2;
     wg.beginPath(); wg.moveTo(px,py); wg.lineTo(px+dx/Lh*70*(0.3+drift),py+dy/Lh*70*(0.3+drift)); wg.stroke();
   }
+  for(let k=0;k<6;k++){ const ph=(t*0.45+k/6)%1, rr=(1-ph)*760+52;   // 터널 링이 입 속으로 수렴
+    wg.strokeStyle=`rgba(200,190,175,${(0.04+0.2*ph)*pull})`; wg.lineWidth=2+5*ph;
+    wg.beginPath(); wg.arc(FXC,cy,rr,0,7); wg.stroke(); }
   wg.strokeStyle='rgba(120,115,105,.13)'; wg.lineWidth=3;            // 공간이 같은 방향으로 기운다
   for(let i=0;i<8;i++){ const y0=60+i*60;
     wg.beginPath(); wg.moveTo(0,y0); wg.quadraticCurveTo(FXC,y0+pull*150,WW,y0); wg.stroke(); }
   wg.fillStyle='#e05a3a'; wg.beginPath(); wg.arc(FXC,cy,40+pull*72+Math.sin(t*6)*8,0,7); wg.fill();   // 뒤집힌 얼굴=입구
   wg.fillStyle='#0b0c10'; wg.beginPath(); wg.arc(FXC,cy,(40+pull*72)*0.55,0,7); wg.fill();
+  const vg=wg.createRadialGradient(FXC,cy,320,FXC,cy,1400);          // 가장자리 어둠(깊이감)
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,`rgba(0,0,0,${0.4*pull})`);
+  wg.fillStyle=vg; wg.fillRect(0,0,WW,WH);
   cClear('#0b0c10');
   for(let i=0;i<26;i++){ const x=(i*53.7)%CWc, y=((i*211)+t*(160+pull*340))%CHc;   // 천장도 정면으로 빨려든다
     cg.strokeStyle='rgba(190,182,168,.2)'; cg.lineWidth=3;
     cg.beginPath(); cg.moveTo(x,y); cg.lineTo(x-6,y+34+pull*50); cg.stroke(); }
 },act:(t,p)=>{
   if(p<0.55){                                          // 테니스 구도: 좌우 끝에서 공수 전환
-    const sw=Math.tanh(Math.sin(t*1.4)*2.5);
-    setActor(garak,-2.6*sw,-1.5,{y:Math.abs(Math.sin(t*6))*0.06, lean:0.15*sw});
-    setActor(deonggi,2.6*sw,-1.1,{y:Math.abs(Math.cos(t*6))*0.06, lean:-0.15*sw});
+    const sw=Math.tanh(Math.sin(t*1.4)*2.5), vx=-Math.cos(t*1.4);
+    setActor(garak,-2.6*sw,-1.5,{y:Math.abs(Math.sin(t*6))*0.06,lean:0.15*sw,walk:1,phase:t*12,face:FDIR(-vx,0.15)});
+    setActor(deonggi,2.6*sw,-1.1,{y:Math.abs(Math.cos(t*6))*0.06,lean:-0.15*sw,walk:1,phase:t*12+2,face:FDIR(vx,0.15)});
   }else if(p<0.72){                                    // 중앙 수렴, 힘의 충돌
     const k=(p-0.55)/0.17;
-    setActor(garak,LRP(-2.6,-0.45,k),LRP(-1.5,-0.9,k),{lean:0.3});
-    setActor(deonggi,LRP(2.6,0.45,k),LRP(-1.1,-0.9,k),{lean:-0.3});
+    setActor(garak,LRP(-2.6,-0.45,k),LRP(-1.5,-0.9,k),{lean:0.3,walk:0.8,phase:t*10,face:Math.PI/2,arms:'front'});
+    setActor(deonggi,LRP(2.6,0.45,k),LRP(-1.1,-0.9,k),{lean:-0.3,walk:0.8,phase:t*10+1,face:-Math.PI/2,arms:'front'});
   }else if(p<0.8){                                     // 만화의 한 컷처럼 얼어붙기
-    setActor(garak,-0.45,-0.9,{lean:0.55,s:0.9});
-    setActor(deonggi,0.45,-0.9,{lean:-0.55,s:0.9});
+    setActor(garak,-0.45,-0.9,{lean:0.55,s:0.92,face:Math.PI/2,arms:'front'});
+    setActor(deonggi,0.45,-0.9,{lean:-0.55,s:0.92,face:-Math.PI/2,arms:'front'});
   }else{                                               // 와르르 넘어져 끌려 들어간다
     const k=(p-0.8)/0.2;
-    setActor(garak,LRP(-0.45,-0.7,k),LRP(-0.9,-2.3,k),{s:0.42,lean:0.95});
-    setActor(deonggi,LRP(0.45,0.7,k),LRP(-0.9,-2.3,k),{s:0.42,lean:-0.95});
+    setActor(garak,LRP(-0.45,-0.7,k),LRP(-0.9,-2.3,k),{s:0.4,lean:1.1,face:Math.PI/2});
+    setActor(deonggi,LRP(0.45,0.7,k),LRP(-0.9,-2.3,k),{s:0.4,lean:-1.1,face:-Math.PI/2});
   }
 }},
-{id:'S#3',t:'2D 검은 도깨비들의 놀이',tc:'3:00~4:20',draw:(t,p)=>{
+{id:'S#3',t:'2D 검은 도깨비들의 놀이',tc:'3:00~4:20',fx:null,draw:(t,p)=>{
   wg.fillStyle='#0d0d0f'; wg.fillRect(0,0,WW,WH);
   wg.strokeStyle='rgba(232,228,218,.08)'; wg.lineWidth=2;            // 납작하게 눌린 방
   for(let i=0;i<6;i++){ const y=70+i*80; wg.beginPath(); wg.moveTo(0,y); wg.lineTo(WW,y); wg.stroke(); }
@@ -606,17 +700,28 @@ const SCENES=[
 },act:(t,p)=>{
   const a=t*1.15;                                      // 관객 대형 바깥을 크게 돌며 추격
   const jump=k=>Math.max(0,Math.sin(t*2.6+k)-0.82)*2.6;
-  setActor(garak,3.0*Math.cos(a),0.8+3.3*Math.sin(a),{y:jump(0)+Math.abs(Math.sin(t*6))*0.05, lean:-Math.sin(a)*0.18});
-  setActor(deonggi,3.0*Math.cos(a+2.4),0.8+3.3*Math.sin(a+2.4),{y:jump(1.3)+Math.abs(Math.cos(t*6))*0.05, lean:-Math.sin(a+2.4)*0.18});
+  setActor(garak,3.0*Math.cos(a),0.8+3.3*Math.sin(a),
+    {y:jump(0)+Math.abs(Math.sin(t*6))*0.05,lean:-Math.sin(a)*0.15,walk:1,phase:t*12,face:FDIR(-Math.sin(a),Math.cos(a))});
+  setActor(deonggi,3.0*Math.cos(a+2.4),0.8+3.3*Math.sin(a+2.4),
+    {y:jump(1.3)+Math.abs(Math.cos(t*6))*0.05,lean:-Math.sin(a+2.4)*0.15,walk:1,phase:t*12+3,face:FDIR(-Math.sin(a+2.4),Math.cos(a+2.4))});
 }},
-{id:'S#4',t:'네 바퀴를 단 카세트 플레이어',tc:'4:20~7:10',draw:(t,p)=>{
+{id:'S#4',t:'네 바퀴를 단 카세트 플레이어',tc:'4:20~7:10',fx:'speed',draw:(t,p)=>{
   wg.fillStyle='#0b0c10'; wg.fillRect(0,0,WW,WH);
   const hz=WH*0.4;
+  const hg=wg.createRadialGradient(FXC,hz,10,FXC,hz,430);            // 소실점 지평선 빛
+  hg.addColorStop(0,'rgba(240,220,180,.2)'); hg.addColorStop(1,'rgba(240,220,180,0)');
+  wg.fillStyle=hg; wg.fillRect(FXC-440,hz-440,880,880);
   for(let i=0;i<22;i++){                               // 2D 선이 3D 길로 부푼다
     const sp=((t*95+i*67)%1300)/1300, y=hz+(WH-hz)*sp*sp, half=16+620*sp;
     wg.strokeStyle=`rgba(220,215,205,${0.06+0.5*sp})`; wg.lineWidth=2+5*sp;
     wg.beginPath(); wg.moveTo(FXC-half,y); wg.lineTo(FXC-half*1.9,WH); wg.stroke();
     wg.beginPath(); wg.moveTo(FXC+half,y); wg.lineTo(FXC+half*1.9,WH); wg.stroke();
+  }
+  for(let i=0;i<10;i++){                               // 도로변 기둥이 스쳐 지나간다
+    const sp=((t*95+i*130)%1300)/1300, y=hz+(WH-hz)*sp*sp, half=16+620*sp, hgt=46*sp;
+    wg.fillStyle=`rgba(220,215,205,${0.08+0.45*sp})`;
+    wg.fillRect(FXC-half-10,y-hgt,5+9*sp,hgt);
+    wg.fillRect(FXC+half+5,y-hgt,5+9*sp,hgt);
   }
   for(let i=0;i<30;i++){ const y=(i*97)%WH, x=wrapX((i*311)-t*900*(0.5+(i%5)/5));   // 좌우 벽 속도 스트릭
     if(Math.abs(x-FXC)<340) continue;
@@ -635,32 +740,33 @@ const SCENES=[
     cg.strokeStyle='rgba(220,215,205,.28)'; cg.lineWidth=3+(i%3);
     cg.beginPath(); cg.moveTo(x,y); cg.lineTo(x,y-60); cg.stroke(); }
 },act:(t,p)=>{
+  const reach=Math.sin(t*1.3)>0.4?'front':null;        // 매달린 도깨비를 떼어내려 손을 뻗는다
   if(p<0.86){                                          // 흔들리는 탈것 위 균형
     const sway=Math.sin(t*7)*0.12;
-    setActor(garak,-0.4,-0.15,{y:0.8+Math.abs(Math.sin(t*9))*0.07, lean:sway+0.1});
-    setActor(deonggi,0.4,0.15,{y:0.8+Math.abs(Math.cos(t*9))*0.07, lean:sway-0.1});
+    setActor(garak,-0.4,-0.15,{y:0.8+Math.abs(Math.sin(t*9))*0.07,lean:sway+0.08,face:Math.PI,arms:reach});
+    setActor(deonggi,0.4,0.15,{y:0.8+Math.abs(Math.cos(t*9))*0.07,lean:sway-0.08,face:Math.PI,arms:reach});
   }else if(p<0.93){                                    // 만화처럼 공중에 한 박 멈춤
-    setActor(garak,-0.4,-0.15,{y:1.55,lean:0.2});
-    setActor(deonggi,0.4,0.15,{y:1.62,lean:-0.2});
+    setActor(garak,-0.4,-0.15,{y:1.55,lean:0.2,face:Math.PI,arms:'up'});
+    setActor(deonggi,0.4,0.15,{y:1.62,lean:-0.2,face:Math.PI,arms:'up'});
   }else{                                               // 낙하
     const k=(p-0.93)/0.07;
-    setActor(garak,-0.5,-0.4,{y:LRP(1.55,0,k),s:LRP(1,0.6,k)});
-    setActor(deonggi,0.5,0.1,{y:LRP(1.62,0,k),s:LRP(1,0.6,k)});
+    setActor(garak,-0.5,-0.4,{y:LRP(1.55,0,k),s:LRP(1,0.6,k),face:Math.PI});
+    setActor(deonggi,0.5,0.1,{y:LRP(1.62,0,k),s:LRP(1,0.6,k),face:Math.PI});
   }
 }},
-{id:'S#5',t:'깊은 끝으로 추락',tc:'7:10~8:30',draw:(t,p)=>{
+{id:'S#5',t:'깊은 끝으로 추락',tc:'7:10~8:30',fx:'orbs',draw:(t,p)=>{
   wg.fillStyle='#05060a'; wg.fillRect(0,0,WW,WH);
   for(let i=0;i<7;i++){ const x=(i*370+120)%WW;                       // 멀리, 오래된 공장 불빛
     wg.fillStyle=`rgba(224,150,70,${0.05+0.04*Math.sin(t*1.3+i)})`; wg.fillRect(x,WH*0.86,26,14); }
   const gather=Math.min(1,Math.max(0,(p-0.25)/0.6));                  // 흩어진 부품(빛)을 모은다
   for(let i=0;i<12;i++){
     const bx=(i*223.7+60)%WW, by=60+(i*137)%(WH-140);
-    const fx=FXC+Math.cos(i)*70, fy=WH*0.5+Math.sin(i*2.3)*46;
-    const x=bx+(fx-bx)*gather+Math.sin(t*1.1+i)*8*(1-gather);
+    const fx0=FXC+Math.cos(i)*70, fy=WH*0.5+Math.sin(i*2.3)*46;
+    const x=bx+(fx0-bx)*gather+Math.sin(t*1.1+i)*8*(1-gather);
     const y=by+(fy-by)*gather+Math.cos(t*0.9+i*1.7)*8*(1-gather);
-    const gl=wg.createRadialGradient(x,y,0,x,y,22);
-    gl.addColorStop(0,'rgba(240,220,170,.85)'); gl.addColorStop(1,'rgba(240,220,170,0)');
-    wg.fillStyle=gl; wg.fillRect(x-22,y-22,44,44);
+    const gl=wg.createRadialGradient(x,y,0,x,y,26);
+    gl.addColorStop(0,'rgba(240,220,170,.9)'); gl.addColorStop(0.35,'rgba(240,220,170,.35)'); gl.addColorStop(1,'rgba(240,220,170,0)');
+    wg.fillStyle=gl; wg.fillRect(x-26,y-26,52,52);
   }
   if(p>0.85){ const a=(p-0.85)/0.15;                                  // 빛이 모이자 정희의 영상이 예고된다
     const gr=wg.createRadialGradient(FXC,WH*0.5,10,FXC,WH*0.5,230);
@@ -671,20 +777,24 @@ const SCENES=[
     cg.fillStyle='rgba(240,220,170,.18)'; cg.fillRect(x,y,4,4); }
 },act:(t,p)=>{
   if(p<0.18){ const k=p/0.18;                          // 느린 착지
-    setActor(garak,-0.9,-0.6,{y:LRP(1.4,0,k),s:LRP(0.7,1,k)});
-    setActor(deonggi,0.9,-0.3,{y:LRP(1.6,0,k),s:LRP(0.7,1,k)});
+    setActor(garak,-0.9,-0.6,{y:LRP(1.4,0,k),s:LRP(0.7,1,k),arms:'up'});
+    setActor(deonggi,0.9,-0.3,{y:LRP(1.6,0,k),s:LRP(0.7,1,k),arms:'up'});
   }else{                                               // 관객에게 빛을 모은다
     const k=Math.min(1,(p-0.18)/0.7);
-    setActor(garak,LRP(-2.7,-0.8,k)+Math.sin(t*1.6)*0.3,LRP(1.6,-0.8,k),{lean:0.22+Math.sin(t*2)*0.08,y:Math.abs(Math.sin(t*3))*0.04});
-    setActor(deonggi,LRP(2.7,0.8,k)+Math.cos(t*1.4)*0.3,LRP(1.2,-0.8,k),{lean:-0.22-Math.sin(t*2)*0.08,y:Math.abs(Math.cos(t*3))*0.04});
+    setActor(garak,LRP(-2.7,-0.8,k)+Math.sin(t*1.6)*0.3,LRP(1.6,-0.8,k),
+      {lean:0.18+Math.sin(t*2)*0.06,y:Math.abs(Math.sin(t*3))*0.04,walk:0.5,phase:t*6,face:FDIR(Math.cos(t*1.6),-0.5),arms:'front'});
+    setActor(deonggi,LRP(2.7,0.8,k)+Math.cos(t*1.4)*0.3,LRP(1.2,-0.8,k),
+      {lean:-0.18-Math.sin(t*2)*0.06,y:Math.abs(Math.cos(t*3))*0.04,walk:0.5,phase:t*6+2,face:FDIR(-Math.sin(t*1.4),-0.5),arms:'front'});
   }
 }},
-{id:'S#6',t:'정희가 남긴 장면',tc:'8:30~10:30',draw:(t,p)=>{
+{id:'S#6',t:'정희가 남긴 장면',tc:'8:30~10:30',fx:'warm',draw:(t,p)=>{
   wg.fillStyle='#0a0908'; wg.fillRect(0,0,WW,WH);
   const stopP=0.72, fade=Math.min(1,Math.max(0,(p-0.55)/0.25));
   const shrink=Math.max(0,(p-stopP)/(1-stopP));
-  const memW=780*(1-0.4*shrink), memH=memW*0.52, cy=WH*0.47;
+  const memW=780*(1-0.4*shrink), memH=memW*0.52;
+  const cy=WH*0.47+Math.sin(t*0.8)*6*(1-shrink);                      // 기억 조각이 공중에 떠 있다
   const warm=1-fade;
+  wg.fillStyle='rgba(0,0,0,.5)'; wg.fillRect(FXC-memW/2+16,cy-memH/2+20,memW,memH);   // 그림자(부유감)
   wg.fillStyle=`rgb(${Math.round(38+120*warm)},${Math.round(28+66*warm)},${Math.round(20+30*warm)})`;   // 기억 조각 화면
   wg.fillRect(FXC-memW/2,cy-memH/2,memW,memH);
   wg.strokeStyle=`rgba(240,214,166,${0.55*(1-shrink*0.8)})`; wg.lineWidth=4;
@@ -707,12 +817,14 @@ const SCENES=[
   rg.addColorStop(0,`rgba(240,210,160,${0.15*warm})`); rg.addColorStop(1,'rgba(240,210,160,0)');
   cg.fillStyle=rg; cg.fillRect(0,0,CWc,CHc);
 },act:(t,p)=>{
-  if(p<0.55) setActor(deonggi,-0.4,-2.2,{y:Math.abs(Math.sin(t*2.2))*0.06});        // 반가움
-  else setActor(deonggi,-0.4,-2.2,{s:0.55});                                        // 주저앉아 응시
-  const k=(Math.sin(t*0.9)+1)/2;                                                    // 가락: 통로와 덩기 사이 왕복
-  setActor(garak,LRP(-0.9,2.9,k),LRP(-1.9,-1.2,k),{y:Math.abs(Math.sin(t*5))*0.05,lean:(k-0.5)*0.3});
+  if(p<0.2) setActor(deonggi,-0.4,-2.2,{y:Math.abs(Math.sin(t*3))*0.1,face:0,arms:'up'});      // 반가움
+  else if(p<0.55) setActor(deonggi,-0.4,-2.2,{y:Math.abs(Math.sin(t*2.2))*0.05,face:0});
+  else setActor(deonggi,-0.4,-2.2,{s:0.52,face:0});                                            // 주저앉아 응시
+  const k=(Math.sin(t*0.9)+1)/2;                                                               // 가락: 통로와 덩기 사이 왕복
+  setActor(garak,LRP(-0.9,2.9,k),LRP(-1.9,-1.2,k),
+    {y:Math.abs(Math.sin(t*5))*0.05,walk:0.7,phase:t*8,face:FDIR(Math.cos(t*0.9),0.3),lean:(k-0.5)*0.2});
 }},
-{id:'S#7',t:'선을 잇고 밖으로',tc:'10:30~12:30',draw:(t,p)=>{
+{id:'S#7',t:'선을 잇고 밖으로',tc:'10:30~12:30',fx:'sparks',draw:(t,p)=>{
   wg.fillStyle='#0b0d12'; wg.fillRect(0,0,WW,WH);
   if(p<0.18){ const a=1-p/0.18, gx=RX0+470;                           // 통로가 좁아지다 사라진다
     wg.fillStyle=`rgba(240,230,200,${0.28*a})`; wg.fillRect(gx-40*a,40,80*a,WH-80); }
@@ -720,6 +832,11 @@ const SCENES=[
   const done=Math.floor(link*8+0.001);
   for(let i=0;i<8;i++){                                               // 천장에서 내려온 기억의 선 8가닥
     const x0=(i+0.5)*WW/8, on=i<done;
+    if(on){ wg.strokeStyle=PCOL[i%4]; wg.globalAlpha=0.22; wg.lineWidth=15;     // 빛 번짐(글로우)
+      wg.beginPath();
+      for(let y=0;y<=WH*0.9;y+=16){ const x=x0+Math.sin(y*0.01+t*0.6+i)*10;
+        y===0?wg.moveTo(x,0):wg.lineTo(x,y); }
+      wg.stroke(); wg.globalAlpha=1; }
     wg.strokeStyle=on?PCOL[i%4]:`rgba(210,205,195,${0.16+0.06*Math.sin(t*2+i)})`;
     wg.lineWidth=on?6:3;
     wg.beginPath();
@@ -731,6 +848,9 @@ const SCENES=[
       wg.beginPath(); wg.arc(x0,WH*0.82,10,0,7); wg.fill(); }
   }
   if(link>0.97){                                                      // 테이프 완성: 파노라마를 관통하는 빛의 줄 + 출구
+    wg.strokeStyle='rgba(242,234,216,.3)'; wg.lineWidth=16; wg.beginPath();
+    for(let x=0;x<=WW;x+=18){ const y=WH*0.5+Math.sin((x+t*180)*0.01)*36; x===0?wg.moveTo(x,y):wg.lineTo(x,y); }
+    wg.stroke();
     wg.strokeStyle='#f2ead8'; wg.lineWidth=7; wg.beginPath();
     for(let x=0;x<=WW;x+=18){ const y=WH*0.5+Math.sin((x+t*180)*0.01)*36; x===0?wg.moveTo(x,y):wg.lineTo(x,y); }
     wg.stroke();
@@ -748,25 +868,29 @@ const SCENES=[
   gob(cg,CCX-85,CCY-40,16,'#0a0a0a','#e8e4da'); gob(cg,CCX+95,CCY+110,13,'#0a0a0a','#e8e4da');
 },act:(t,p)=>{
   if(p<0.15){                                          // 가락, 화를 낸다
-    setActor(deonggi,-0.4,-2.2,{s:0.55});
-    setActor(garak,0.5,-1.8,{y:Math.abs(Math.sin(t*8))*0.12,lean:Math.sin(t*8)*0.25});
+    setActor(deonggi,-0.4,-2.2,{s:0.52,face:0});
+    setActor(garak,0.5,-1.8,{y:Math.abs(Math.sin(t*8))*0.12,lean:Math.sin(t*8)*0.2,face:-Math.PI/2,arms:'up'});
   }else if(p<0.3){                                     // 둘 다 주저앉는다
-    setActor(deonggi,-0.4,-2.2,{s:0.55});
-    setActor(garak,0.5,-1.8,{s:0.55});
+    setActor(deonggi,-0.4,-2.2,{s:0.52,face:0});
+    setActor(garak,0.5,-1.8,{s:0.55,face:-Math.PI/2});
   }else if(p<0.42){                                    // 가락, 천장의 기억 조각을 발견
-    setActor(deonggi,-0.4,-2.2,{s:0.55});
-    setActor(garak,0.5,-1.8,{tilt:-0.35,y:0.1});
+    setActor(deonggi,-0.4,-2.2,{s:0.52,face:0});
+    setActor(garak,0.5,-1.8,{tilt:-0.35,y:0.1,face:0,arms:'point'});
   }else{                                               // 덩기 벌떡, 벽으로 돌진·점프 / 가락은 관객 유도
-    setActor(deonggi,3.1*Math.sin(t*1.3),-1.9,{y:Math.max(0,Math.sin(t*3.2)-0.68)*1.3,lean:Math.cos(t*1.3)*0.2});
+    const dx=3.1*Math.sin(t*1.3);
+    setActor(deonggi,dx,-1.9,{y:Math.max(0,Math.sin(t*3.2)-0.68)*1.3,lean:Math.cos(t*1.3)*0.15,
+      walk:1,phase:t*12,face:FDIR(Math.cos(t*1.3),0.1),arms:'up'});
     const a=t*0.8;
-    setActor(garak,2.2*Math.cos(a),1.5+0.8*Math.sin(a),{y:Math.abs(Math.sin(t*4))*0.06,lean:Math.sin(t*2)*0.15});
+    setActor(garak,2.2*Math.cos(a),1.5+0.8*Math.sin(a),
+      {y:Math.abs(Math.sin(t*4))*0.06,walk:0.7,phase:t*8,face:FDIR(-Math.sin(a),0.36*Math.cos(a)),arms:'point'});
   }
 }},
-{id:'S#8',t:'현실로 돌아오다',tc:'12:30~13:30',draw:(t,p)=>{
+{id:'S#8',t:'현실로 돌아오다',tc:'12:30~13:30',fx:'dust',draw:(t,p)=>{
   wg.fillStyle='#0d0e12'; wg.fillRect(0,0,WW,WH);
   factory(t,0.55);
   wDust(40,t*0.4,'rgba(200,190,170,.05)');
   const cy=WH*0.46, spin=p>0.62?t*1.4:0;
+  wg.fillStyle='rgba(0,0,0,.4)'; wg.fillRect(FXC-300+12,cy-125+16,600,250);        // 그림자
   wg.fillStyle='#171a20'; wg.strokeStyle='#3a404c'; wg.lineWidth=4;   // 평범한 플레이어로 돌아왔다
   wg.fillRect(FXC-300,cy-125,600,250); wg.strokeRect(FXC-300,cy-125,600,250);
   wReel(FXC-130,cy-16,54,spin,'#e8e4da',5);
@@ -776,18 +900,18 @@ const SCENES=[
   cClear('#0d0e12'); cReel(CCX,CHc*0.7,100,spin*0.5,'#232833',5);
 },act:(t,p)=>{
   if(p<0.15){                                          // 바람에 밀려 나와 넘어져 있다
-    setActor(garak,-0.9,2.6,{s:0.45,lean:0.8});
-    setActor(deonggi,0.9,2.9,{s:0.45,lean:-0.8});
+    setActor(garak,-0.9,2.6,{s:0.45,lean:0.9});
+    setActor(deonggi,0.9,2.9,{s:0.45,lean:-0.9});
   }else{
     const prog=Math.min(1,(p-0.15)/0.7);
     const step=Math.floor(prog*5)/5+Math.max(0,(prog*5%1)-0.6)*0.4;   // 멈칫멈칫 다가간다
     const z=LRP(2.6,-0.75,step);
     const bow=p>0.85?0.5:0;                                           // 함 앞에서 몸을 숙여 테이프를 넣는다
-    setActor(garak,-0.55,z,{y:Math.abs(Math.sin(t*3))*0.04,tilt:bow});
-    setActor(deonggi,0.55,z+0.2,{y:Math.abs(Math.cos(t*3))*0.04,tilt:bow});
+    setActor(garak,-0.55,z,{y:Math.abs(Math.sin(t*3))*0.04,tilt:bow,walk:0.5,phase:t*6,face:Math.PI,arms:bow?'front':null});
+    setActor(deonggi,0.55,z+0.2,{y:Math.abs(Math.cos(t*3))*0.04,tilt:bow,walk:0.5,phase:t*6+2,face:Math.PI,arms:bow?'front':null});
   }
 }},
-{id:'S#9',t:'테이프가 끝까지 재생되다',tc:'13:30~15:00',draw:(t,p)=>{
+{id:'S#9',t:'테이프가 끝까지 재생되다',tc:'13:30~15:00',fx:'confetti',draw:(t,p)=>{
   wg.fillStyle='#100a12'; wg.fillRect(0,0,WW,WH);
   for(let i=0;i<5;i++){ const x=(i*520+260)%WW, r=60+((t*40+i*160)%420);            // 색이 공장에 번진다
     wg.globalAlpha=0.10; wg.fillStyle=PCOL[i%5]; wg.beginPath(); wg.arc(x,WH*0.5,r,0,7); wg.fill(); wg.globalAlpha=1; }
@@ -806,17 +930,20 @@ const SCENES=[
   for(let i=0;i<50;i++){ const x=(i*167)%CWc, y=((i*113)+t*90)%CHc;
     cg.fillStyle=PCOL[i%5]; cg.globalAlpha=0.8; cg.fillRect(x,y,5,8); cg.globalAlpha=1; }
 },act:(t,p)=>{
+  const a=t*0.95;
+  const dance={y:Math.abs(Math.sin(t*5))*0.14,walk:0.9,phase:t*9,arms:'up'};
   if(p>0.45&&p<0.62){                                  // 덩기, 새 테이프를 넣고 녹음 버튼
-    setActor(deonggi,0.5,-0.6,{tilt:0.5});
-    const a=t*0.95;
-    setActor(garak,3.0*Math.cos(a),0.8+3.2*Math.sin(a),{y:Math.abs(Math.sin(t*5))*0.14,lean:Math.sin(t*5)*0.12});
+    setActor(deonggi,0.5,-0.6,{tilt:0.5,face:Math.PI,arms:'front'});
+    setActor(garak,3.0*Math.cos(a),0.8+3.2*Math.sin(a),
+      Object.assign({},dance,{lean:Math.sin(t*5)*0.1,face:FDIR(-Math.sin(a),Math.cos(a))}));
   }else{                                               // 강강술래: 관객을 가운데 두고 크게 돈다
-    const a=t*0.95;
-    setActor(garak,3.0*Math.cos(a),0.8+3.2*Math.sin(a),{y:Math.abs(Math.sin(t*5))*0.14,lean:Math.sin(t*5)*0.12});
-    setActor(deonggi,3.0*Math.cos(a+Math.PI),0.8+3.2*Math.sin(a+Math.PI),{y:Math.abs(Math.cos(t*5))*0.14,lean:-Math.sin(t*5)*0.12});
+    setActor(garak,3.0*Math.cos(a),0.8+3.2*Math.sin(a),
+      Object.assign({},dance,{lean:Math.sin(t*5)*0.1,face:FDIR(-Math.sin(a),Math.cos(a))}));
+    setActor(deonggi,3.0*Math.cos(a+Math.PI),0.8+3.2*Math.sin(a+Math.PI),
+      Object.assign({},dance,{phase:t*9+3,lean:-Math.sin(t*5)*0.1,face:FDIR(-Math.sin(a+Math.PI),Math.cos(a+Math.PI))}));
   }
 }},
-{id:'엔딩',t:'퇴장 · 엔딩 크레딧',tc:'15:00~',draw:(t,p)=>{
+{id:'엔딩',t:'퇴장 · 엔딩 크레딧',tc:'15:00~',fx:'warm',draw:(t,p)=>{
   wg.fillStyle='#060709'; wg.fillRect(0,0,WW,WH);
   const cy=WH*0.5;
   wg.strokeStyle='#2a2e36'; wg.lineWidth=26;                          // 카세트 창 너머, 덩기의 시점
@@ -838,8 +965,8 @@ const SCENES=[
   for(let i=0;i<40;i++){ const x=(i*97)%CWc, y=(i*211)%CHc;           // 천장의 별
     cg.fillStyle=`rgba(240,230,200,${0.1+0.1*Math.sin(t*2+i)})`; cg.fillRect(x,y,3,3); }
 },act:(t,p)=>{
-  setActor(deonggi,0.6,-2.5,{lean:Math.sin(t*4)*0.18,y:Math.abs(Math.sin(t*2))*0.03});   // 정희에게 손을 흔든다
-  setActor(garak,1.7,-1.9,{y:Math.abs(Math.sin(t*1.6))*0.04,lean:-0.12});
+  setActor(deonggi,0.6,-2.5,{y:Math.abs(Math.sin(t*2))*0.03,face:0,arms:'wave',phase:t*6});   // 정희에게 손을 흔든다
+  setActor(garak,1.7,-1.9,{y:Math.abs(Math.sin(t*1.6))*0.04,lean:-0.1,face:0,arms:'point'});
 }}];
 
 let simIdx=0, simAuto=true, simT0=performance.now();
@@ -876,6 +1003,7 @@ function drawSim(){
   SCENES[simIdx].draw(tt,pr);
   blitSim();
   if(SCENES[simIdx].act) SCENES[simIdx].act(tt,pr);
+  updateFX(SCENES[simIdx].fx,tt,pr);
 }
 applyMode('pattern');
 
