@@ -34,7 +34,7 @@
 <div id="app"></div>
 
 <div class="panel">
-  <h1>디큐브 프리비즈 <span>· 도깨비 놀음</span> <span style="color:#5b616b;font-weight:400;font-size:10px">빌드 0720C</span></h1>
+  <h1>디큐브 프리비즈 <span>· 도깨비 놀음</span> <span style="color:#5b616b;font-weight:400;font-size:10px">빌드 0730A</span></h1>
   <div class="row">
     <button id="btnView">1인칭으로 보기 (V)</button>
     <button id="btnFig" class="on">사람·함</button>
@@ -69,11 +69,11 @@
   </div>
   <div class="hint" id="mapWarn" style="display:none;color:#e5674b"></div>
   <div class="row" style="border-top:1px solid #2c313b;padding-top:10px;margin-top:10px;">
-    <span style="color:#f08a3c;font-weight:700">연출 시뮬레이션 · 0718 시나리오</span>
+    <span style="color:#f08a3c;font-weight:700">연출 시뮬레이션 · v4 시나리오 (0730)</span>
   </div>
   <div class="row">
     <button id="simPrev" style="padding:7px 9px">◀</button>
-    <div id="simLabel" style="flex:1;min-width:0;font-size:11.5px;color:#f2ead8;line-height:1.3">S#1 나머지는 다음에<br><span style="color:#9aa0ab">0:00~1:30</span></div>
+    <div id="simLabel" style="flex:1;min-width:0;font-size:11.5px;color:#f2ead8;line-height:1.3">프리셋 입장 · 멈춘 공장<br><span style="color:#9aa0ab">입장~0:00</span></div>
     <button id="simNext" style="padding:7px 9px">▶</button>
   </div>
   <div class="row">
@@ -219,6 +219,40 @@ const figures=new THREE.Group();
   figures.add(ham,hamEdge);
 }
 scene.add(figures);
+
+// ── 시뮬레이션 배우: 가락(주황)·덩기(청록) + 관객 반원 + 플레이어(함) ──
+const actors=new THREE.Group();
+function mkActor(col,h){
+  const g=new THREE.Group();
+  const mat=new THREE.MeshStandardMaterial({color:col,roughness:.5,emissive:col,emissiveIntensity:.3});
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(.15,.18,h,10),mat); body.position.y=h/2;
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.13,14,10),mat); head.position.y=h+0.13;
+  g.add(body,head); return g;
+}
+const garak=mkActor(0xf08a3c,1.2);     // 가락 (여자 배우)
+const deonggi=mkActor(0x4fd4bf,1.35);  // 덩기 (남자 배우)
+function setActor(a,x,z,o){ o=o||{};
+  a.position.set(x,o.y||0,z);
+  a.rotation.z=o.lean||0; a.rotation.x=o.tilt||0;
+  const s=(o.s==null)?1:o.s; a.scale.set(1,s,1);
+}
+const audGroup=new THREE.Group();       // 관객 반원 대형(참고 마커)
+for(let i=0;i<7;i++){ const ang=Math.PI*(0.18+0.64*i/6);
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(.14,.16,.95,8),
+    new THREE.MeshStandardMaterial({color:0x6a7078,roughness:.85,transparent:true,opacity:.45}));
+  m.position.set(2.6*Math.cos(ang),0.475,1.1+1.7*Math.sin(ang));
+  audGroup.add(m);
+}
+const simHam=new THREE.Mesh(new THREE.BoxGeometry(1.0,0.8,0.6),   // 카세트 플레이어(함)
+  new THREE.MeshStandardMaterial({color:0x6b4a2b,roughness:.8}));
+simHam.position.set(0,0.4,-0.2);
+const simHamEdge=new THREE.LineSegments(new THREE.EdgesGeometry(simHam.geometry),
+  new THREE.LineBasicMaterial({color:0xf08a3c}));
+simHamEdge.position.copy(simHam.position);
+actors.add(garak,deonggi,audGroup,simHam,simHamEdge);
+actors.visible=false;
+scene.add(actors);
+
 
 // ── 카메라 컨트롤 (궤도 + 1인칭) ──────────────
 let fp=false;
@@ -414,16 +448,20 @@ function applyMode(m){
   document.getElementById('slotsFaces').style.display = m==='faces'?'block':'none';
   document.getElementById('slotsAll').style.display   = m==='strip'?'block':'none';
   document.getElementById('runRow').style.display     = (m==='faces'||m==='strip')?'flex':'none';
+  actors.visible=(m==='sim');
+  figures.visible=(m!=='sim')&&figOn;
   updateWarn(); syncButtons(); syncRun();
 }
 document.getElementById('mPattern').onclick=()=>applyMode('pattern');
 document.getElementById('mFaces').onclick=()=>applyMode('faces');
 document.getElementById('mStrip').onclick=()=>applyMode('strip');
+let figOn=true;
 document.getElementById('btnFig').onclick=function(){
-  figures.visible=!figures.visible; this.classList.toggle('on',figures.visible);
+  figOn=!figOn; this.classList.toggle('on',figOn);
+  figures.visible=figOn&&viewMode!=='sim';
 };
 
-// ── 연출 시뮬레이션 (0718 시나리오 S#1~S#9) ─────────────
+// ── 연출 시뮬레이션 (v4 시나리오 0730 · 프리셋+S#1~9+엔딩) ──
 // 씬은 벽 3면 파노라마 캔버스(2304×576 = 24m×6m)와 천장 캔버스(960×672)에 그린 뒤
 // 면 캔버스로 1:1 블릿한다. (좌[0,672) 정면[672,1632) 우[1632,2304))
 const WALLC=document.createElement('canvas'); WALLC.width=2592; WALLC.height=576;
@@ -439,9 +477,6 @@ function blitSim(){
   FACES.ceil.g.drawImage(CEILC, 0,0,672,960, 0,0,896,1280);
   FACE_KEYS.forEach(k=>FACES[k].tex.needsUpdate=true);
 }
-function wLabel(x,y,lines,sizes,cols){wg.textAlign='center';
-  lines.forEach((tx,i)=>{wg.font=(i===0?'bold ':'')+sizes[i]+'px sans-serif';wg.fillStyle=cols[i];
-    wg.fillText(tx,x,y+sizes.slice(0,i).reduce((a,b)=>a+b*1.35,0));});}
 function wDust(n,t,col){wg.fillStyle=col;for(let i=0;i<n;i++){
   wg.fillRect((i*977.13+t*8*(0.3+i%7/10))%WW,(i*613.77+t*3*(0.2+i%5/10))%WH,2,2);}}
 function cClear(col){cg.fillStyle=col;cg.fillRect(0,0,CWc,CHc);}
@@ -452,189 +487,359 @@ function cReel(x,y,r,rot,col,lw){cg.strokeStyle=col;cg.lineWidth=lw;
     cg.beginPath();cg.moveTo(x+Math.cos(a)*r*0.33,y+Math.sin(a)*r*0.33);
     cg.lineTo(x+Math.cos(a)*r,y+Math.sin(a)*r);cg.stroke();}}
 
+function wrapX(x){ return ((x%WW)+WW)%WW; }
+function wReel(x,y,r,rot,col,lw){ wg.strokeStyle=col; wg.lineWidth=lw;
+  wg.beginPath(); wg.arc(x,y,r,0,7); wg.stroke();
+  wg.beginPath(); wg.arc(x,y,r*0.33,0,7); wg.stroke();
+  for(let k=0;k<5;k++){ const a=k/5*6.283+rot;
+    wg.beginPath(); wg.moveTo(x+Math.cos(a)*r*0.33,y+Math.sin(a)*r*0.33);
+    wg.lineTo(x+Math.cos(a)*r,y+Math.sin(a)*r); wg.stroke(); } }
+function gob(g,x,y,r,col,eye){                      // 검은 도깨비: 몸+뿔+눈 (텍스트 없음)
+  g.fillStyle=col; g.beginPath(); g.arc(x,y,r,0,7); g.fill();
+  g.beginPath(); g.moveTo(x-r*0.55,y-r*0.75); g.lineTo(x-r*0.85,y-r*1.5); g.lineTo(x-r*0.1,y-r*0.95); g.closePath(); g.fill();
+  g.beginPath(); g.moveTo(x+r*0.55,y-r*0.75); g.lineTo(x+r*0.85,y-r*1.5); g.lineTo(x+r*0.1,y-r*0.95); g.closePath(); g.fill();
+  if(eye){ g.fillStyle=eye; g.fillRect(x-r*0.42,y-r*0.2,r*0.26,r*0.26); g.fillRect(x+r*0.16,y-r*0.2,r*0.26,r*0.26); } }
+function factory(t,dim){                            // 파노라마 공장 실루엣
+  for(let i=0;i<9;i++){ const x=110+i*292; wg.fillStyle='rgba(16,18,22,.85)'; wg.fillRect(x,80,24,WH-80); }
+  wg.fillStyle='rgba(16,18,22,.85)'; wg.fillRect(0,96,WW,14);
+  for(let i=0;i<6;i++){ const x=210+i*430; wg.fillStyle=`rgba(210,195,160,${0.04+dim*0.06})`; wg.fillRect(x,34,120,54); }
+  for(let i=0;i<7;i++){ const x=(i*386+60)%WW; wg.fillStyle='rgba(20,23,28,.9)'; wg.fillRect(x,WH-150-(i%3)*36,150,150+(i%3)*36); }
+  for(let i=0;i<4;i++){ const x=340+i*640; wReel(x,WH*0.42,58,0,`rgba(46,50,60,${0.5+dim*0.3})`,4); } }
+const LRP=(a,b,k)=>a+(b-a)*Math.max(0,Math.min(1,k));
+const PCOL=['#4fd4bf','#f08a3c','#6aa0e5','#e05a8a','#e0c84a'];
+
+// ── v4 시나리오 (0730) · 프리셋 + S#1~9 + 엔딩 = 11씬 ──
+// 영상 내 텍스트 없음(v4 원칙) · draw(t,p)=4면 미디어 · act(t,p)=가락(주황)·덩기(청록) 동선
 const SCENES=[
-{id:'S#1',t:'나머지는 다음에',tc:'0:00~1:30',draw:(t,p)=>{
-  wg.fillStyle='#0a0b0e';wg.fillRect(0,0,WW,WH); wDust(80,t,'rgba(200,190,170,.07)');
-  [336,FXC-330,FXC+330,RX0+336].forEach((cx,i)=>{
-    wg.strokeStyle='#232833';wg.lineWidth=7;
-    wg.beginPath();wg.arc(cx,WH*0.42,96,0,7);wg.stroke();
-    wg.beginPath();wg.arc(cx,WH*0.42,34,0,7);wg.stroke();
-    for(let k=0;k<6;k++){const a=k/6*6.283+(i===1?t*0.05:0);
-      wg.beginPath();wg.moveTo(cx+Math.cos(a)*34,WH*0.42+Math.sin(a)*34);
-      wg.lineTo(cx+Math.cos(a)*96,WH*0.42+Math.sin(a)*96);wg.stroke();}});
-  const fy=WH*0.40,bw=520,bh=230;
-  wg.fillStyle='#14161c';wg.strokeStyle='#8a6a30';wg.lineWidth=3;
-  wg.fillRect(FXC-bw/2,fy-bh/2,bw,bh);wg.strokeRect(FXC-bw/2,fy-bh/2,bw,bh);
-  wLabel(FXC,fy-38,['정희 / 1992','나머지는 다음에'],[40,34],['#f2ead8','#e0a44a']);
-  const gw=bw*0.72;wg.fillStyle='#232833';wg.fillRect(FXC-gw/2,fy+56,gw,14);
-  wg.fillStyle='#e0a44a';wg.fillRect(FXC-gw/2,fy+56,gw*0.5,14);
-  if(Math.sin(t*4)>0)wg.fillRect(FXC-gw/2+gw*0.5,fy+52,4,22);
-  wLabel(FXC,fy+102,['녹음 절반에서 멈춤'],[24],['rgba(224,164,74,.5)']);
-  cClear('#101217'); cReel(CCX,CCY,110,0,'#1d222b',6);
+{id:'프리셋',t:'입장 · 멈춘 공장',tc:'입장~0:00',draw:(t,p)=>{
+  wg.fillStyle='#07080a'; wg.fillRect(0,0,WW,WH);
+  factory(t,0.15);
+  if(p>0.6){ wg.fillStyle=`rgba(240,220,180,${0.06*(p-0.6)/0.4})`; wg.fillRect(0,0,WW,WH); }  // 덩기가 조명을 켠다
+  wDust(60,t*0.5,'rgba(180,175,165,.05)');
+  cClear('#050608');
+  cg.strokeStyle='rgba(120,115,105,.08)'; cg.lineWidth=10;
+  for(let i=0;i<4;i++){ const y=140+i*230; cg.beginPath(); cg.moveTo(0,y); cg.lineTo(CWc,y); cg.stroke(); }
+},act:(t,p)=>{
+  const a=t*0.55;                                     // 가락: 관객 사이 배회하며 흉내
+  setActor(garak, 2.1*Math.cos(a), 1.5+0.9*Math.sin(a), {y:Math.abs(Math.sin(t*4))*0.05});
+  if(p<0.55) setActor(deonggi, 0.4, 5.3, {});          // 덩기: 입구 밖 대기
+  else setActor(deonggi, Math.sin(t*1.8)*2.4, LRP(5.3,1.2,(p-0.55)/0.35), {y:Math.abs(Math.sin(t*5))*0.06, lean:Math.sin(t*3)*0.1});
+}},
+{id:'S#1',t:'테이프 · DJ 언니에게',tc:'0:00~1:30',draw:(t,p)=>{
+  wg.fillStyle='#0a0b0e'; wg.fillRect(0,0,WW,WH);
+  factory(t,0.4);
+  const gr=wg.createRadialGradient(FXC,WH*0.6,10,FXC,WH*0.6,240);   // 테이프의 존재감: 빛 웅덩이
+  gr.addColorStop(0,'rgba(224,180,120,.15)'); gr.addColorStop(1,'rgba(224,180,120,0)');
+  wg.fillStyle=gr; wg.fillRect(FXC-260,WH*0.6-260,520,520);
+  wReel(FXC-150,WH*0.42,80,Math.sin(t*0.7)*0.02,'#2e323c',6);       // 멈춘 릴, 미세한 떨림
+  wReel(FXC+150,WH*0.42,80,-Math.sin(t*0.7)*0.02,'#2e323c',6);
+  wDust(90,t*2,'rgba(220,210,190,.06)');
+  cClear('#07080b'); cReel(CCX,CHc*0.72,120,0,'#161a21',5);
+},act:(t,p)=>{
+  if(p<0.8){
+    const dx=2.2*Math.sin(t*0.45);                     // 덩기: 테이프 들고 관객 사이 가로지르기
+    setActor(deonggi, dx, 0.3, {y:0.07+Math.abs(Math.sin(t*3.4))*0.04});
+    setActor(garak, dx-1.15*Math.cos(t*3), 1.1+0.5*Math.sin(t*3), {y:Math.abs(Math.sin(t*7))*0.08, lean:Math.sin(t*3)*0.2});
+  }else{                                               // 팽팽한 줄다리기
+    const sh=Math.sin(t*9)*0.1;
+    setActor(garak,-0.55+sh,-0.9,{lean:-0.3+sh});
+    setActor(deonggi,0.55+sh,-0.9,{lean:0.3+sh});
+  }
 }},
 {id:'S#2',t:'모두가 플레이어 안으로',tc:'1:30~3:00',draw:(t,p)=>{
-  wg.fillStyle='#0b0c10';wg.fillRect(0,0,WW,WH);
-  const cy=WH*0.5;
-  for(let i=0;i<64;i++){const a=i/64*6.283+t*0.25, sp=1-((t*130+i*97)%1200)/1200, r=180*sp+40;
-    wg.strokeStyle=`rgba(210,200,180,${0.05+0.25*(1-sp)})`;wg.lineWidth=2+4*(1-sp);
-    wg.beginPath();wg.moveTo(FXC+Math.cos(a)*r*2.6,cy+Math.sin(a)*r*0.5);
-    wg.lineTo(FXC+Math.cos(a)*(r+120)*2.6,cy+Math.sin(a)*(r+120)*0.5);wg.stroke();}
-  for(let i=0;i<9;i++){const sx=(i*331)%WW;
-    wg.fillStyle='rgba(5,6,8,.55)';wg.beginPath();
-    wg.moveTo(sx,WH);wg.lineTo(sx+40,WH);wg.lineTo(FXC+20,cy+28);wg.lineTo(FXC,cy+28);wg.closePath();wg.fill();}
-  wg.fillStyle='#e05a3a';wg.beginPath();wg.arc(FXC,cy,52+Math.sin(t*6)*9,0,7);wg.fill();
-  wg.fillStyle='#0b0c10';wg.beginPath();wg.arc(FXC,cy,30,0,7);wg.fill();
-  wLabel(FXC,WH*0.14,['플레이어 얼굴이 뒤집힌다'],[26],['rgba(224,110,74,.75)']);
+  wg.fillStyle='#0b0c10'; wg.fillRect(0,0,WW,WH);
+  const cy=WH*0.52, pull=Math.min(1,p*1.4);
+  for(let i=0;i<70;i++){                               // 그림자가 플레이어 입으로 늘어난다
+    const sx=(i*197.3)%WW, sy=(i*89.7)%WH;
+    const dx=FXC-sx, dy=cy-sy, Lh=Math.hypot(dx,dy)+1;
+    const drift=((t*260+i*140)%Lh)/Lh;
+    const px=sx+dx*drift*pull, py=sy+dy*drift*pull;
+    wg.strokeStyle=`rgba(190,182,168,${0.05+0.3*drift})`; wg.lineWidth=(1-drift)*9+2;
+    wg.beginPath(); wg.moveTo(px,py); wg.lineTo(px+dx/Lh*70*(0.3+drift),py+dy/Lh*70*(0.3+drift)); wg.stroke();
+  }
+  wg.strokeStyle='rgba(120,115,105,.13)'; wg.lineWidth=3;            // 공간이 같은 방향으로 기운다
+  for(let i=0;i<8;i++){ const y0=60+i*60;
+    wg.beginPath(); wg.moveTo(0,y0); wg.quadraticCurveTo(FXC,y0+pull*150,WW,y0); wg.stroke(); }
+  wg.fillStyle='#e05a3a'; wg.beginPath(); wg.arc(FXC,cy,40+pull*72+Math.sin(t*6)*8,0,7); wg.fill();   // 뒤집힌 얼굴=입구
+  wg.fillStyle='#0b0c10'; wg.beginPath(); wg.arc(FXC,cy,(40+pull*72)*0.55,0,7); wg.fill();
   cClear('#0b0c10');
-  for(let i=0;i<18;i++){const x=(i*53+((i%2)?60:0))%CWc, y=(i*47+t*220)%CHc;
-    cg.strokeStyle='rgba(200,190,175,.2)';cg.lineWidth=3;
-    cg.beginPath();cg.moveTo(x,y);cg.lineTo(x-20,y+70);cg.stroke();}
+  for(let i=0;i<26;i++){ const x=(i*53.7)%CWc, y=((i*211)+t*(160+pull*340))%CHc;   // 천장도 정면으로 빨려든다
+    cg.strokeStyle='rgba(190,182,168,.2)'; cg.lineWidth=3;
+    cg.beginPath(); cg.moveTo(x,y); cg.lineTo(x-6,y+34+pull*50); cg.stroke(); }
+},act:(t,p)=>{
+  if(p<0.55){                                          // 테니스 구도: 좌우 끝에서 공수 전환
+    const sw=Math.tanh(Math.sin(t*1.4)*2.5);
+    setActor(garak,-2.6*sw,-1.5,{y:Math.abs(Math.sin(t*6))*0.06, lean:0.15*sw});
+    setActor(deonggi,2.6*sw,-1.1,{y:Math.abs(Math.cos(t*6))*0.06, lean:-0.15*sw});
+  }else if(p<0.72){                                    // 중앙 수렴, 힘의 충돌
+    const k=(p-0.55)/0.17;
+    setActor(garak,LRP(-2.6,-0.45,k),LRP(-1.5,-0.9,k),{lean:0.3});
+    setActor(deonggi,LRP(2.6,0.45,k),LRP(-1.1,-0.9,k),{lean:-0.3});
+  }else if(p<0.8){                                     // 만화의 한 컷처럼 얼어붙기
+    setActor(garak,-0.45,-0.9,{lean:0.55,s:0.9});
+    setActor(deonggi,0.45,-0.9,{lean:-0.55,s:0.9});
+  }else{                                               // 와르르 넘어져 끌려 들어간다
+    const k=(p-0.8)/0.2;
+    setActor(garak,LRP(-0.45,-0.7,k),LRP(-0.9,-2.3,k),{s:0.42,lean:0.95});
+    setActor(deonggi,LRP(0.45,0.7,k),LRP(-0.9,-2.3,k),{s:0.42,lean:-0.95});
+  }
 }},
 {id:'S#3',t:'2D 검은 도깨비들의 놀이',tc:'3:00~4:20',draw:(t,p)=>{
-  wg.fillStyle='#0d0d0f';wg.fillRect(0,0,WW,WH);
-  wg.strokeStyle='#e8e4da';wg.lineWidth=5;
-  const cy=WH*0.55;
-  wg.beginPath();wg.arc(FXC,cy,100,0,7);wg.stroke();
-  wg.beginPath();wg.arc(FXC,cy,34,0,7);wg.stroke();
-  const len=(0.15+p*0.85)*WW*2.2;
-  wg.beginPath();let lx=FXC;
-  for(let d=0;d<len;d+=24){const x=(FXC+d)%WW, y=cy+Math.sin(d*0.012+t*0.8)*(WH*0.22);
-    if(x<lx)wg.moveTo(x,y);else wg.lineTo(x,y);lx=x;}
+  wg.fillStyle='#0d0d0f'; wg.fillRect(0,0,WW,WH);
+  wg.strokeStyle='rgba(232,228,218,.08)'; wg.lineWidth=2;            // 납작하게 눌린 방
+  for(let i=0;i<6;i++){ const y=70+i*80; wg.beginPath(); wg.moveTo(0,y); wg.lineTo(WW,y); wg.stroke(); }
+  wReel(FXC,WH*0.5,92,t*2.2,'#e8e4da',5);                            // 가운데 릴에서 테이프가 풀린다
+  const len=(0.1+p*0.9)*WW*2.6, cy=WH*0.52;
+  wg.strokeStyle='#e8e4da'; wg.lineWidth=5; wg.beginPath();
+  let lx=-1;
+  for(let d=0; d<len; d+=20){ const x=wrapX(FXC+92+d), y=cy+Math.sin(d*0.012+t*0.8)*(WH*0.26);
+    (lx<0||x<lx)?wg.moveTo(x,y):wg.lineTo(x,y); lx=x; }
   wg.stroke();
-  for(let i=0;i<12;i++){const d=(t*130+i*len/12)%len, x=(FXC+d)%WW, y=cy+Math.sin(d*0.012+t*0.8)*(WH*0.22)-22;
-    wg.fillStyle='#0a0a0a';wg.beginPath();wg.arc(x,y,15,0,7);wg.fill();
-    wg.strokeStyle='#e8e4da';wg.lineWidth=2;wg.stroke();
-    wg.fillStyle='#e8e4da';wg.fillRect(x-6,y-5,4,4);wg.fillRect(x+2,y-5,4,4);}
-  wLabel(FXC,WH*0.14,['테이프가 네 화면을 채운다 · 색과 깊이 없음'],[25],['rgba(232,228,218,.55)']);
-  cClear('#0d0d0f');cg.strokeStyle='rgba(232,228,218,.7)';cg.lineWidth=5;
-  cg.beginPath();for(let x=0;x<CWc;x+=22){const y=CCY+Math.sin(x*0.02+t)*90;x?cg.lineTo(x,y):cg.moveTo(x,y);}cg.stroke();
+  const st=Math.floor(t*8)/8;                                        // 조이트로프 스텝 애니
+  for(let i=0;i<11;i++){ const d=(st*150+i*len/11)%len;
+    const x=wrapX(FXC+92+d), y=cy+Math.sin(d*0.012+t*0.8)*(WH*0.26)-24;
+    gob(wg,x,y,15,'#0a0a0a','#e8e4da'); }
+  cClear('#0d0d0f');
+  cg.strokeStyle='rgba(232,228,218,.5)'; cg.lineWidth=4;             // 천장까지 줄이 감긴다
+  for(let k=0;k<3;k++){ cg.beginPath(); cg.arc(CCX,CCY,58+k*74+(p*40)%74,0,7); cg.stroke(); }
+  gob(cg,CCX+Math.cos(t*2)*130,CCY+Math.sin(t*2)*130,14,'#0a0a0a','#e8e4da');
+},act:(t,p)=>{
+  const a=t*1.15;                                      // 관객 대형 바깥을 크게 돌며 추격
+  const jump=k=>Math.max(0,Math.sin(t*2.6+k)-0.82)*2.6;
+  setActor(garak,3.0*Math.cos(a),0.8+3.3*Math.sin(a),{y:jump(0)+Math.abs(Math.sin(t*6))*0.05, lean:-Math.sin(a)*0.18});
+  setActor(deonggi,3.0*Math.cos(a+2.4),0.8+3.3*Math.sin(a+2.4),{y:jump(1.3)+Math.abs(Math.cos(t*6))*0.05, lean:-Math.sin(a+2.4)*0.18});
 }},
-{id:'S#4',t:'네 바퀴를 단 플레이어 · 여정',tc:'4:20~7:10',draw:(t,p)=>{
-  wg.fillStyle='#0b0c10';wg.fillRect(0,0,WW,WH);
-  const jit=Math.sin(t*13)*5, hy=WH*0.42+jit;
-  for(let i=0;i<24;i++){const sp=((t*90+i*67)%1400)/1400, y=hy+(WH-hy)*sp*sp, w2=18+520*sp;
-    wg.strokeStyle=`rgba(220,215,205,${0.08+0.5*sp})`;wg.lineWidth=2+5*sp;
-    wg.beginPath();wg.moveTo(FXC-w2,y);wg.lineTo(FXC-w2*1.9,WH);wg.stroke();
-    wg.beginPath();wg.moveTo(FXC+w2,y);wg.lineTo(FXC+w2*1.9,WH);wg.stroke();}
-  for(const s of[-1,1]){const wx=FXC+s*270, wy=WH*0.8+jit*0.6;
-    wg.strokeStyle='#e8e4da';wg.lineWidth=7;wg.beginPath();wg.arc(wx,wy,76,0,7);wg.stroke();
-    for(let k=0;k<5;k++){const a=k/5*6.283+t*4*s;
-      wg.beginPath();wg.moveTo(wx,wy);wg.lineTo(wx+Math.cos(a)*76,wy+Math.sin(a)*76);wg.stroke();}}
-  for(let i=0;i<8;i++){const on=((t*0.5+i*0.37)%1)>0.5&&(i/8>p*0.9);
-    const x=((i*397+40)%(WW-80))+40, y=WH*0.3+((i*211)%(WH*0.4));
-    if(on){wg.fillStyle='#0a0a0a';wg.beginPath();wg.arc(x,y,18,0,7);wg.fill();
-      wg.strokeStyle='#e8e4da';wg.lineWidth=2;wg.stroke();
-      wg.fillStyle='#e8e4da';wg.fillRect(x-7,y-6,5,5);wg.fillRect(x+2,y-6,5,5);}
-    else{const hue=['#4fd4bf','#f08a3c','#6aa0e5','#e05a8a'][i%4];
-      wg.fillStyle=hue;wg.beginPath();wg.arc(x,y,9+Math.sin(t*5+i)*3,0,7);wg.fill();
-      wg.globalAlpha=0.4;wg.strokeStyle=hue;wg.beginPath();wg.arc(x,y,22,0,7);wg.stroke();wg.globalAlpha=1;}}
-  wLabel(FXC,WH*0.12,['검은 도깨비를 터치하면 색과 소리를 되찾는다'],[25],['rgba(240,138,60,.8)']);
+{id:'S#4',t:'네 바퀴를 단 카세트 플레이어',tc:'4:20~7:10',draw:(t,p)=>{
+  wg.fillStyle='#0b0c10'; wg.fillRect(0,0,WW,WH);
+  const hz=WH*0.4;
+  for(let i=0;i<22;i++){                               // 2D 선이 3D 길로 부푼다
+    const sp=((t*95+i*67)%1300)/1300, y=hz+(WH-hz)*sp*sp, half=16+620*sp;
+    wg.strokeStyle=`rgba(220,215,205,${0.06+0.5*sp})`; wg.lineWidth=2+5*sp;
+    wg.beginPath(); wg.moveTo(FXC-half,y); wg.lineTo(FXC-half*1.9,WH); wg.stroke();
+    wg.beginPath(); wg.moveTo(FXC+half,y); wg.lineTo(FXC+half*1.9,WH); wg.stroke();
+  }
+  for(let i=0;i<30;i++){ const y=(i*97)%WH, x=wrapX((i*311)-t*900*(0.5+(i%5)/5));   // 좌우 벽 속도 스트릭
+    if(Math.abs(x-FXC)<340) continue;
+    wg.strokeStyle='rgba(200,195,185,.14)'; wg.lineWidth=2;
+    wg.beginPath(); wg.moveTo(x,y); wg.lineTo(x+72,y); wg.stroke(); }
+  const jit=Math.sin(t*13)*5;
+  for(const s of[-1,1]) wReel(FXC+s*260,WH*0.8+jit,74,t*5*s,'#e8e4da',6);          // 네 바퀴
+  const n=Math.max(1,8-Math.floor(p*7));                                            // 도깨비가 하나씩 떨어져 사라진다
+  for(let i=0;i<n;i++){ const s=i%2?1:-1, a=t*3*s+i*0.9;
+    gob(wg,FXC+s*260+Math.cos(a)*100,WH*0.8+jit+Math.sin(a)*80,14,'#0a0a0a','#e8e4da'); }
+  const ph=(p*7)%1;                                                                 // 터치 순간의 플래시
+  if(ph<0.3){ wg.strokeStyle=PCOL[n%5]; wg.globalAlpha=(0.3-ph)*2.2; wg.lineWidth=5;
+    wg.beginPath(); wg.arc(FXC+((n%2)?260:-260),WH*0.62,30+ph*160,0,7); wg.stroke(); wg.globalAlpha=1; }
   cClear('#0b0c10');
-  for(let i=0;i<14;i++){const y=(i*53+t*320)%CHc;
-    cg.strokeStyle='rgba(220,215,205,.25)';cg.lineWidth=4;
-    cg.beginPath();cg.moveTo(30,y);cg.lineTo(CWc-30,y);cg.stroke();}
+  for(let i=0;i<16;i++){ const x=(i*53)%CWc, y=(((i*211)-t*520)%CHc+CHc)%CHc;       // 천장 길을 위로 질주
+    cg.strokeStyle='rgba(220,215,205,.28)'; cg.lineWidth=3+(i%3);
+    cg.beginPath(); cg.moveTo(x,y); cg.lineTo(x,y-60); cg.stroke(); }
+},act:(t,p)=>{
+  if(p<0.86){                                          // 흔들리는 탈것 위 균형
+    const sway=Math.sin(t*7)*0.12;
+    setActor(garak,-0.4,-0.15,{y:0.8+Math.abs(Math.sin(t*9))*0.07, lean:sway+0.1});
+    setActor(deonggi,0.4,0.15,{y:0.8+Math.abs(Math.cos(t*9))*0.07, lean:sway-0.1});
+  }else if(p<0.93){                                    // 만화처럼 공중에 한 박 멈춤
+    setActor(garak,-0.4,-0.15,{y:1.55,lean:0.2});
+    setActor(deonggi,0.4,0.15,{y:1.62,lean:-0.2});
+  }else{                                               // 낙하
+    const k=(p-0.93)/0.07;
+    setActor(garak,-0.5,-0.4,{y:LRP(1.55,0,k),s:LRP(1,0.6,k)});
+    setActor(deonggi,0.5,0.1,{y:LRP(1.62,0,k),s:LRP(1,0.6,k)});
+  }
 }},
-{id:'S#5',t:'깊은 곳으로 추락',tc:'7:10~8:30',draw:(t,p)=>{
-  wg.fillStyle='#07080b';wg.fillRect(0,0,WW,WH);
-  for(let i=0;i<36;i++){const x=(i*269)%WW, y=((i*151)+t*30*(0.4+i%5/6))%WH;
-    wg.strokeStyle='rgba(180,175,165,.18)';wg.lineWidth=3;
-    if(i%3===0){wg.beginPath();wg.arc(x,y,16,0,7);wg.stroke();}
-    else{wg.beginPath();wg.moveTo(x,y);wg.lineTo(x+28,y+11);wg.stroke();}}
-  for(let i=0;i<7;i++){const x=FXC-360+i*120, y=WH*0.82+Math.sin(i)*8;
-    wg.fillStyle=`rgba(224,164,74,${0.25+0.15*Math.sin(t*2+i)})`;wg.fillRect(x,y,14,20);}
-  wg.strokeStyle='rgba(224,164,74,.35)';wg.lineWidth=3;wg.beginPath();
-  for(let x=-240;x<=240;x+=8){wg.lineTo(FXC+x,WH*0.5+Math.sin(x*0.05+t*3)*13*Math.exp(-Math.abs(x)/210));}
-  wg.stroke();
-  wLabel(FXC,WH*0.2,['멀리, 오래된 공장의 불빛과 목소리'],[25],['rgba(230,220,205,.5)']);
-  cClear('#06070a');
-  for(let i=0;i<10;i++){const x=(i*97)%CWc,y=((i*131)+t*24)%CHc;
-    cg.strokeStyle='rgba(180,175,165,.14)';cg.lineWidth=3;
-    cg.beginPath();cg.arc(x,y,12,0,7);cg.stroke();}
+{id:'S#5',t:'깊은 끝으로 추락',tc:'7:10~8:30',draw:(t,p)=>{
+  wg.fillStyle='#05060a'; wg.fillRect(0,0,WW,WH);
+  for(let i=0;i<7;i++){ const x=(i*370+120)%WW;                       // 멀리, 오래된 공장 불빛
+    wg.fillStyle=`rgba(224,150,70,${0.05+0.04*Math.sin(t*1.3+i)})`; wg.fillRect(x,WH*0.86,26,14); }
+  const gather=Math.min(1,Math.max(0,(p-0.25)/0.6));                  // 흩어진 부품(빛)을 모은다
+  for(let i=0;i<12;i++){
+    const bx=(i*223.7+60)%WW, by=60+(i*137)%(WH-140);
+    const fx=FXC+Math.cos(i)*70, fy=WH*0.5+Math.sin(i*2.3)*46;
+    const x=bx+(fx-bx)*gather+Math.sin(t*1.1+i)*8*(1-gather);
+    const y=by+(fy-by)*gather+Math.cos(t*0.9+i*1.7)*8*(1-gather);
+    const gl=wg.createRadialGradient(x,y,0,x,y,22);
+    gl.addColorStop(0,'rgba(240,220,170,.85)'); gl.addColorStop(1,'rgba(240,220,170,0)');
+    wg.fillStyle=gl; wg.fillRect(x-22,y-22,44,44);
+  }
+  if(p>0.85){ const a=(p-0.85)/0.15;                                  // 빛이 모이자 정희의 영상이 예고된다
+    const gr=wg.createRadialGradient(FXC,WH*0.5,10,FXC,WH*0.5,230);
+    gr.addColorStop(0,`rgba(240,214,166,${0.3*a})`); gr.addColorStop(1,'rgba(240,214,166,0)');
+    wg.fillStyle=gr; wg.fillRect(FXC-240,WH*0.5-240,480,480); }
+  cClear('#040508');
+  for(let i=0;i<10;i++){ const x=(i*97)%CWc, y=((i*131)+t*20)%CHc;
+    cg.fillStyle='rgba(240,220,170,.18)'; cg.fillRect(x,y,4,4); }
+},act:(t,p)=>{
+  if(p<0.18){ const k=p/0.18;                          // 느린 착지
+    setActor(garak,-0.9,-0.6,{y:LRP(1.4,0,k),s:LRP(0.7,1,k)});
+    setActor(deonggi,0.9,-0.3,{y:LRP(1.6,0,k),s:LRP(0.7,1,k)});
+  }else{                                               // 관객에게 빛을 모은다
+    const k=Math.min(1,(p-0.18)/0.7);
+    setActor(garak,LRP(-2.7,-0.8,k)+Math.sin(t*1.6)*0.3,LRP(1.6,-0.8,k),{lean:0.22+Math.sin(t*2)*0.08,y:Math.abs(Math.sin(t*3))*0.04});
+    setActor(deonggi,LRP(2.7,0.8,k)+Math.cos(t*1.4)*0.3,LRP(1.2,-0.8,k),{lean:-0.22-Math.sin(t*2)*0.08,y:Math.abs(Math.cos(t*3))*0.04});
+  }
 }},
 {id:'S#6',t:'정희가 남긴 장면',tc:'8:30~10:30',draw:(t,p)=>{
-  const gr=wg.createLinearGradient(0,0,0,WH);gr.addColorStop(0,'#241a10');gr.addColorStop(1,'#120d08');
-  wg.fillStyle=gr;wg.fillRect(0,0,WW,WH); wDust(60,t*0.6,'rgba(240,210,160,.10)');
-  wg.fillStyle='rgba(20,14,8,.85)';
-  wg.beginPath();wg.ellipse(FXC+400,WH*0.62,300,220,-0.4,0,7);wg.fill();
-  wg.beginPath();wg.ellipse(FXC+140,WH*0.42,140,100,-0.2,0,7);wg.fill();
-  wg.fillStyle='#171310';wg.fillRect(FXC-520,WH*0.52,280,170);
-  wg.fillStyle=Math.sin(t*3)>0&&p<0.5?'#e05a3a':'#3a2f24';
-  wg.beginPath();wg.arc(FXC-492,WH*0.57,11,0,7);wg.fill();
-  const msg='나머지는 다음에', n=Math.max(1,Math.floor(p*1.6*msg.length));
-  wg.font='bold 78px sans-serif';wg.textAlign='left';wg.fillStyle='rgba(240,214,166,.9)';
-  wg.fillText(msg.slice(0,n),FXC-480,WH*0.35);
-  if(p>0.82){for(let i=0;i<12;i++){const x=((i*463)%(WW-40))+20;
-    wg.strokeStyle=`rgba(240,214,166,${0.5+0.4*Math.sin(t*6+i)})`;wg.lineWidth=4;
-    wg.beginPath();wg.moveTo(x,0);wg.lineTo(x,WH);wg.stroke();}}
-  wLabel(FXC,WH*0.9,['1992년, 퇴근 직전 · 철컥 소리에서 덩기가 태어난다'],[25],['rgba(240,214,166,.65)']);
-  cClear('#1c140c');
-  const rg=cg.createRadialGradient(CCX,CCY,40,CCX,CCY,420);
-  rg.addColorStop(0,'rgba(240,210,160,.16)');rg.addColorStop(1,'rgba(240,210,160,0)');
-  cg.fillStyle=rg;cg.fillRect(0,0,CWc,CHc);
+  wg.fillStyle='#0a0908'; wg.fillRect(0,0,WW,WH);
+  const stopP=0.72, fade=Math.min(1,Math.max(0,(p-0.55)/0.25));
+  const shrink=Math.max(0,(p-stopP)/(1-stopP));
+  const memW=780*(1-0.4*shrink), memH=memW*0.52, cy=WH*0.47;
+  const warm=1-fade;
+  wg.fillStyle=`rgb(${Math.round(38+120*warm)},${Math.round(28+66*warm)},${Math.round(20+30*warm)})`;   // 기억 조각 화면
+  wg.fillRect(FXC-memW/2,cy-memH/2,memW,memH);
+  wg.strokeStyle=`rgba(240,214,166,${0.55*(1-shrink*0.8)})`; wg.lineWidth=4;
+  wg.strokeRect(FXC-memW/2,cy-memH/2,memW,memH);
+  const sc=1-0.4*shrink;                                              // 정희: 녹음기 앞에 앉은 실루엣
+  const px0=FXC, py0=cy+memH*0.22;
+  wg.fillStyle=`rgb(${Math.round(18+34*warm)},${Math.round(13+22*warm)},${Math.round(9+14*warm)})`;
+  wg.fillRect(px0-150*sc,py0-6*sc,300*sc,9*sc);                       // 작업대
+  wg.beginPath(); wg.arc(px0-56*sc,py0-48*sc,42*sc,Math.PI,0); wg.fill();          // 상체
+  wg.beginPath(); wg.arc(px0-56*sc,py0-100*sc,24*sc,0,7); wg.fill();               // 머리
+  wg.fillRect(px0+34*sc,py0-32*sc,56*sc,24*sc);                                    // 녹음기
+  if(p<stopP&&Math.sin(t*4)>0){ wg.fillStyle='#e05a3a'; wg.beginPath(); wg.arc(px0+46*sc,py0-40*sc,6,0,7); wg.fill(); }   // 녹음 불
+  if(Math.abs(p-stopP)<0.02){ wg.fillStyle='rgba(255,255,255,.5)'; wg.fillRect(FXC-memW/2,cy-memH/2,memW,memH); }         // '탁'
+  if(p>stopP){ const a=(p-stopP)/(1-stopP), gx=RX0+470;               // 통로가 나타난다
+    const gr=wg.createLinearGradient(gx-90,0,gx+90,0);
+    gr.addColorStop(0,'rgba(240,230,200,0)'); gr.addColorStop(0.5,`rgba(240,230,200,${0.4*a})`); gr.addColorStop(1,'rgba(240,230,200,0)');
+    wg.fillStyle=gr; wg.fillRect(gx-90,40,180,WH-80); }
+  cClear('#0a0908');
+  const rg=cg.createRadialGradient(CCX,CHc*0.6,40,CCX,CHc*0.6,420);   // 천장의 온기가 식는다
+  rg.addColorStop(0,`rgba(240,210,160,${0.15*warm})`); rg.addColorStop(1,'rgba(240,210,160,0)');
+  cg.fillStyle=rg; cg.fillRect(0,0,CWc,CHc);
+},act:(t,p)=>{
+  if(p<0.55) setActor(deonggi,-0.4,-2.2,{y:Math.abs(Math.sin(t*2.2))*0.06});        // 반가움
+  else setActor(deonggi,-0.4,-2.2,{s:0.55});                                        // 주저앉아 응시
+  const k=(Math.sin(t*0.9)+1)/2;                                                    // 가락: 통로와 덩기 사이 왕복
+  setActor(garak,LRP(-0.9,2.9,k),LRP(-1.9,-1.2,k),{y:Math.abs(Math.sin(t*5))*0.05,lean:(k-0.5)*0.3});
 }},
 {id:'S#7',t:'선을 잇고 밖으로',tc:'10:30~12:30',draw:(t,p)=>{
-  wg.fillStyle='#0b0d12';wg.fillRect(0,0,WW,WH);
-  const segs=14, done=Math.floor(p*1.25*segs);
-  for(let i=0;i<segs;i++){
-    const x0=i/segs*WW+28, x1=(i+1)/segs*WW-28;
-    const y0=WH*0.5+Math.sin(i*1.7)*80, y1=WH*0.5+Math.sin((i+1)*1.7)*80;
-    const hue=['#4fd4bf','#f08a3c','#6aa0e5','#e05a8a'][i%4];
-    wg.strokeStyle=i<done?hue:'rgba(210,205,195,.35)';wg.lineWidth=i<done?7:4;
-    wg.beginPath();wg.moveTo(x0,y0);wg.lineTo(i<done?x1:x0+(x1-x0)*0.62,y1);wg.stroke();
-    if(i===done){const gx=x0+(x1-x0)*0.8, gy=(y0+y1)/2;
-      wg.fillStyle='rgba(255,240,200,'+(0.5+0.5*Math.sin(t*8))+')';
-      wg.beginPath();wg.arc(gx,gy,9,0,7);wg.fill();}}
-  if(p>0.8){const cy=WH*0.45;
-    for(const s of[-1,1]){wg.strokeStyle='#f2ead8';wg.lineWidth=6;
-      wg.beginPath();wg.arc(FXC+s*160,cy,80,0,7);wg.stroke();}
-    wg.strokeStyle='#e0a44a';wg.lineWidth=7;wg.beginPath();wg.moveTo(FXC-160,cy-80);
-    wg.quadraticCurveTo(FXC,cy-116,FXC+160,cy-80);wg.stroke();
-    wLabel(FXC,WH*0.76,['정희 / 1992 + 오늘 / 완성'],[36],['#f2ead8']);}
-  else wLabel(FXC,WH*0.14,['끊어진 선 끝을 터치해 잇는다 · 이어질 때마다 소리가 선명해진다'],[25],['rgba(240,220,190,.7)']);
+  wg.fillStyle='#0b0d12'; wg.fillRect(0,0,WW,WH);
+  if(p<0.18){ const a=1-p/0.18, gx=RX0+470;                           // 통로가 좁아지다 사라진다
+    wg.fillStyle=`rgba(240,230,200,${0.28*a})`; wg.fillRect(gx-40*a,40,80*a,WH-80); }
+  const link=Math.min(1,Math.max(0,(p-0.35)/0.58));
+  const done=Math.floor(link*8+0.001);
+  for(let i=0;i<8;i++){                                               // 천장에서 내려온 기억의 선 8가닥
+    const x0=(i+0.5)*WW/8, on=i<done;
+    wg.strokeStyle=on?PCOL[i%4]:`rgba(210,205,195,${0.16+0.06*Math.sin(t*2+i)})`;
+    wg.lineWidth=on?6:3;
+    wg.beginPath();
+    for(let y=0;y<=WH*0.9;y+=16){ const x=x0+Math.sin(y*0.01+t*(on?0.6:1.6)+i)*26*(on?0.4:1);
+      y===0?wg.moveTo(x,0):wg.lineTo(x,y); }
+    wg.stroke();
+    if(!on) gob(wg,x0+Math.sin(t*1.6+i)*20,WH*0.35+(i%3)*70,15,'#0a0a0a','#e8e4da');   // 매달린 도깨비
+    if(i===done){ wg.fillStyle=`rgba(255,240,200,${0.5+0.5*Math.sin(t*8)})`;           // 다음 터치 지점
+      wg.beginPath(); wg.arc(x0,WH*0.82,10,0,7); wg.fill(); }
+  }
+  if(link>0.97){                                                      // 테이프 완성: 파노라마를 관통하는 빛의 줄 + 출구
+    wg.strokeStyle='#f2ead8'; wg.lineWidth=7; wg.beginPath();
+    for(let x=0;x<=WW;x+=18){ const y=WH*0.5+Math.sin((x+t*180)*0.01)*36; x===0?wg.moveTo(x,y):wg.lineTo(x,y); }
+    wg.stroke();
+    const gr=wg.createRadialGradient(FXC,WH*0.55,20,FXC,WH*0.55,260);
+    gr.addColorStop(0,'rgba(255,245,220,.5)'); gr.addColorStop(1,'rgba(255,245,220,0)');
+    wg.fillStyle=gr; wg.fillRect(FXC-270,WH*0.55-270,540,540);
+  }
   cClear('#0b0d12');
-  cg.strokeStyle='rgba(210,205,195,.3)';cg.lineWidth=3;
-  cg.beginPath();cg.arc(CCX,CCY,220,0,7);cg.stroke();
-  cg.strokeStyle='#e0a44a';cg.lineWidth=6;
-  cg.beginPath();cg.arc(CCX,CCY,220,-1.57,-1.57+p*6.283);cg.stroke();
+  for(let k=0;k<3;k++){                                               // 천장: 도깨비들이 문 기억 조각이 펄럭인다
+    cg.strokeStyle=(done>=(k+1)*2.6)?'#e0a44a':'rgba(210,205,195,.35)'; cg.lineWidth=5;
+    cg.beginPath();
+    for(let x=0;x<=CWc;x+=14){ const y=190+k*270+Math.sin(x*0.02+t*2+k)*30; x===0?cg.moveTo(x,y):cg.lineTo(x,y); }
+    cg.stroke();
+  }
+  gob(cg,CCX-85,CCY-40,16,'#0a0a0a','#e8e4da'); gob(cg,CCX+95,CCY+110,13,'#0a0a0a','#e8e4da');
+},act:(t,p)=>{
+  if(p<0.15){                                          // 가락, 화를 낸다
+    setActor(deonggi,-0.4,-2.2,{s:0.55});
+    setActor(garak,0.5,-1.8,{y:Math.abs(Math.sin(t*8))*0.12,lean:Math.sin(t*8)*0.25});
+  }else if(p<0.3){                                     // 둘 다 주저앉는다
+    setActor(deonggi,-0.4,-2.2,{s:0.55});
+    setActor(garak,0.5,-1.8,{s:0.55});
+  }else if(p<0.42){                                    // 가락, 천장의 기억 조각을 발견
+    setActor(deonggi,-0.4,-2.2,{s:0.55});
+    setActor(garak,0.5,-1.8,{tilt:-0.35,y:0.1});
+  }else{                                               // 덩기 벌떡, 벽으로 돌진·점프 / 가락은 관객 유도
+    setActor(deonggi,3.1*Math.sin(t*1.3),-1.9,{y:Math.max(0,Math.sin(t*3.2)-0.68)*1.3,lean:Math.cos(t*1.3)*0.2});
+    const a=t*0.8;
+    setActor(garak,2.2*Math.cos(a),1.5+0.8*Math.sin(a),{y:Math.abs(Math.sin(t*4))*0.06,lean:Math.sin(t*2)*0.15});
+  }
 }},
 {id:'S#8',t:'현실로 돌아오다',tc:'12:30~13:30',draw:(t,p)=>{
-  wg.fillStyle='#0d0e12';wg.fillRect(0,0,WW,WH); wDust(50,t*0.5,'rgba(200,190,170,.06)');
-  const cy=WH*0.46;
-  wg.fillStyle='#171a20';wg.strokeStyle='#3a404c';wg.lineWidth=4;
-  wg.fillRect(FXC-300,cy-130,600,260);wg.strokeRect(FXC-300,cy-130,600,260);
-  for(const s of[-1,1]){wg.strokeStyle='#f2ead8';wg.lineWidth=5;
-    wg.beginPath();wg.arc(FXC+s*135,cy-20,56,0,7);wg.stroke();
-    for(let k=0;k<3;k++){const a=k/3*6.283+t*1.2;
-      wg.beginPath();wg.moveTo(FXC+s*135,cy-20);
-      wg.lineTo(FXC+s*135+Math.cos(a)*56,cy-20+Math.sin(a)*56);wg.stroke();}}
-  wg.fillStyle='#e0a44a';wg.beginPath();
-  wg.moveTo(FXC-20,cy+60);wg.lineTo(FXC+28,cy+82);wg.lineTo(FXC-20,cy+104);wg.closePath();wg.fill();
-  wLabel(FXC,cy+152,['정희 / 1992 + 오늘 / 완성  ·  재생'],[27],['#9aa0ab']);
-  wLabel(FXC,WH*0.12,['뒤집혔던 얼굴은 사라지고, 평범한 플레이어가 남는다'],[25],['rgba(230,220,205,.55)']);
-  cClear('#0d0e12'); cReel(CCX,CCY,110,t*0.3,'#232833',5);
+  wg.fillStyle='#0d0e12'; wg.fillRect(0,0,WW,WH);
+  factory(t,0.55);
+  wDust(40,t*0.4,'rgba(200,190,170,.05)');
+  const cy=WH*0.46, spin=p>0.62?t*1.4:0;
+  wg.fillStyle='#171a20'; wg.strokeStyle='#3a404c'; wg.lineWidth=4;   // 평범한 플레이어로 돌아왔다
+  wg.fillRect(FXC-300,cy-125,600,250); wg.strokeRect(FXC-300,cy-125,600,250);
+  wReel(FXC-130,cy-16,54,spin,'#e8e4da',5);
+  wReel(FXC+130,cy-16,54,spin,'#e8e4da',5);
+  if(p>0.62){ wg.fillStyle='#e0a44a'; wg.beginPath();                 // 재생 표시
+    wg.moveTo(FXC-16,cy+64); wg.lineTo(FXC+22,cy+82); wg.lineTo(FXC-16,cy+100); wg.closePath(); wg.fill(); }
+  cClear('#0d0e12'); cReel(CCX,CHc*0.7,100,spin*0.5,'#232833',5);
+},act:(t,p)=>{
+  if(p<0.15){                                          // 바람에 밀려 나와 넘어져 있다
+    setActor(garak,-0.9,2.6,{s:0.45,lean:0.8});
+    setActor(deonggi,0.9,2.9,{s:0.45,lean:-0.8});
+  }else{
+    const prog=Math.min(1,(p-0.15)/0.7);
+    const step=Math.floor(prog*5)/5+Math.max(0,(prog*5%1)-0.6)*0.4;   // 멈칫멈칫 다가간다
+    const z=LRP(2.6,-0.75,step);
+    const bow=p>0.85?0.5:0;                                           // 함 앞에서 몸을 숙여 테이프를 넣는다
+    setActor(garak,-0.55,z,{y:Math.abs(Math.sin(t*3))*0.04,tilt:bow});
+    setActor(deonggi,0.55,z+0.2,{y:Math.abs(Math.cos(t*3))*0.04,tilt:bow});
+  }
 }},
-{id:'S#9',t:'테이프가 끝까지 재생되다 · 파티',tc:'13:30~15:00',draw:(t,p)=>{
-  wg.fillStyle='#12080e';wg.fillRect(0,0,WW,WH);
-  const cols=['#4fd4bf','#f08a3c','#6aa0e5','#e05a8a','#e0c84a'];
-  for(let i=0;i<110;i++){const x=(i*247)%WW, y=((i*131)+t*120*(0.5+i%5/5))%WH;
-    wg.fillStyle=cols[i%5];wg.globalAlpha=0.75;wg.fillRect(x,y,6,10);wg.globalAlpha=1;}
-  const hy=WH*0.42;
-  for(let i=0;i<18;i++){const sp=((t*60+i*77)%1400)/1400, y=hy+(WH-hy)*sp*sp, w2=18+520*sp;
-    wg.strokeStyle=cols[i%5];wg.globalAlpha=0.12+0.4*sp;wg.lineWidth=3+4*sp;
-    wg.beginPath();wg.moveTo(FXC-w2,y);wg.lineTo(FXC-w2*1.9,WH);wg.stroke();
-    wg.beginPath();wg.moveTo(FXC+w2,y);wg.lineTo(FXC+w2*1.9,WH);wg.stroke();wg.globalAlpha=1;}
-  for(let i=0;i<14;i++){const x=((i*401)%(WW-60))+30, y=WH*0.62-Math.abs(Math.sin(t*4+i))*120;
-    wg.fillStyle=cols[i%5];wg.beginPath();wg.arc(x,y+110,15,0,7);wg.fill();
-    wg.fillStyle='#0d0e11';wg.fillRect(x-6,y+103,4,4);wg.fillRect(x+2,y+103,4,4);}
-  if(p>0.85)wLabel(FXC,WH*0.5,['완 성'],[100],['rgba(242,234,216,.92)']);
-  cClear('#140a10');
-  for(let i=0;i<40;i++){const x=(i*167)%CWc,y=((i*113)+t*90)%CHc;
-    cg.fillStyle=cols[i%5];cg.globalAlpha=0.8;cg.fillRect(x,y,6,9);cg.globalAlpha=1;}
-  cg.save();cg.translate(CCX,CCY);cg.rotate(t*0.4);
-  for(const s of[-1,1]){cg.strokeStyle='#f2ead8';cg.lineWidth=6;
-    cg.beginPath();cg.arc(s*90,0,64,0,7);cg.stroke();}
-  cg.strokeStyle='#e0a44a';cg.lineWidth=7;cg.beginPath();cg.moveTo(-90,-64);
-  cg.quadraticCurveTo(0,-100,90,-64);cg.stroke();cg.restore();
+{id:'S#9',t:'테이프가 끝까지 재생되다',tc:'13:30~15:00',draw:(t,p)=>{
+  wg.fillStyle='#100a12'; wg.fillRect(0,0,WW,WH);
+  for(let i=0;i<5;i++){ const x=(i*520+260)%WW, r=60+((t*40+i*160)%420);            // 색이 공장에 번진다
+    wg.globalAlpha=0.10; wg.fillStyle=PCOL[i%5]; wg.beginPath(); wg.arc(x,WH*0.5,r,0,7); wg.fill(); wg.globalAlpha=1; }
+  for(let i=0;i<120;i++){ const x=(i*247)%WW, y=WH-(((i*131)+t*130*(0.5+(i%5)/5))%WH);   // 상승하는 색 입자
+    wg.fillStyle=PCOL[i%5]; wg.globalAlpha=0.8; wg.fillRect(x,y,5,9); wg.globalAlpha=1; }
+  wg.strokeStyle='rgba(242,234,216,.5)'; wg.lineWidth=4; wg.beginPath();            // 강강술래처럼 도는 흐름
+  for(let x=0;x<=WW;x+=18){ const y=WH*0.62+Math.sin((x+t*260)*0.012)*40; x===0?wg.moveTo(x,y):wg.lineTo(x,y); }
+  wg.stroke();
+  for(let i=0;i<12;i++){ const x=wrapX(i*216+t*60*(i%2?1:-1)), y=WH*0.66-Math.abs(Math.sin(t*4+i))*120;
+    gob(wg,x,y,16,PCOL[i%5],'#141018'); }                                           // 색을 되찾은 도깨비들의 춤
+  cClear('#120a14');
+  cg.save(); cg.translate(CCX,CCY); cg.rotate(t*0.5);                               // 천장: 도는 테이프
+  for(const s of[-1,1]){ cg.strokeStyle='#f2ead8'; cg.lineWidth=6; cg.beginPath(); cg.arc(s*88,0,60,0,7); cg.stroke(); }
+  cg.strokeStyle='#e0a44a'; cg.lineWidth=6; cg.beginPath(); cg.moveTo(-88,-60); cg.quadraticCurveTo(0,-96,88,-60); cg.stroke();
+  cg.restore();
+  for(let i=0;i<50;i++){ const x=(i*167)%CWc, y=((i*113)+t*90)%CHc;
+    cg.fillStyle=PCOL[i%5]; cg.globalAlpha=0.8; cg.fillRect(x,y,5,8); cg.globalAlpha=1; }
+},act:(t,p)=>{
+  if(p>0.45&&p<0.62){                                  // 덩기, 새 테이프를 넣고 녹음 버튼
+    setActor(deonggi,0.5,-0.6,{tilt:0.5});
+    const a=t*0.95;
+    setActor(garak,3.0*Math.cos(a),0.8+3.2*Math.sin(a),{y:Math.abs(Math.sin(t*5))*0.14,lean:Math.sin(t*5)*0.12});
+  }else{                                               // 강강술래: 관객을 가운데 두고 크게 돈다
+    const a=t*0.95;
+    setActor(garak,3.0*Math.cos(a),0.8+3.2*Math.sin(a),{y:Math.abs(Math.sin(t*5))*0.14,lean:Math.sin(t*5)*0.12});
+    setActor(deonggi,3.0*Math.cos(a+Math.PI),0.8+3.2*Math.sin(a+Math.PI),{y:Math.abs(Math.cos(t*5))*0.14,lean:-Math.sin(t*5)*0.12});
+  }
+}},
+{id:'엔딩',t:'퇴장 · 엔딩 크레딧',tc:'15:00~',draw:(t,p)=>{
+  wg.fillStyle='#060709'; wg.fillRect(0,0,WW,WH);
+  const cy=WH*0.5;
+  wg.strokeStyle='#2a2e36'; wg.lineWidth=26;                          // 카세트 창 너머, 덩기의 시점
+  wg.beginPath(); wg.arc(FXC,cy,200,0,7); wg.stroke();
+  const gr=wg.createRadialGradient(FXC,cy,10,FXC,cy,190);
+  gr.addColorStop(0,'rgba(240,214,166,.3)'); gr.addColorStop(1,'rgba(240,214,166,.02)');
+  wg.fillStyle=gr; wg.beginPath(); wg.arc(FXC,cy,190,0,7); wg.fill();
+  const sway=Math.sin(t*1.2)*6;                                       // 정희, 수줍게 노래한다
+  wg.fillStyle='#14100c';
+  wg.beginPath(); wg.arc(FXC+sway*0.4,cy-56,24,0,7); wg.fill();
+  wg.beginPath(); wg.moveTo(FXC-42+sway,cy+124); wg.quadraticCurveTo(FXC+sway*0.6,cy-40,FXC+42+sway,cy+124); wg.closePath(); wg.fill();
+  for(let i=0;i<3;i++){ const rr=210+((t*26+i*60)%180);               // 노래가 번져 나가는 파문
+    wg.strokeStyle=`rgba(240,214,166,${0.14*(1-((t*26+i*60)%180)/180)})`; wg.lineWidth=2;
+    wg.beginPath(); wg.arc(FXC,cy,rr,0,7); wg.stroke(); }
+  for(let i=0;i<10;i++){ const y=(i*70+t*30)%WH;                      // 크레딧 자리(추상 바)
+    wg.fillStyle='rgba(200,195,185,.05)';
+    wg.fillRect(210,y,300,8); wg.fillRect(RX0+330,y,300,8); }
+  cClear('#050608');
+  for(let i=0;i<40;i++){ const x=(i*97)%CWc, y=(i*211)%CHc;           // 천장의 별
+    cg.fillStyle=`rgba(240,230,200,${0.1+0.1*Math.sin(t*2+i)})`; cg.fillRect(x,y,3,3); }
+},act:(t,p)=>{
+  setActor(deonggi,0.6,-2.5,{lean:Math.sin(t*4)*0.18,y:Math.abs(Math.sin(t*2))*0.03});   // 정희에게 손을 흔든다
+  setActor(garak,1.7,-1.9,{y:Math.abs(Math.sin(t*1.6))*0.04,lean:-0.12});
 }}];
 
 let simIdx=0, simAuto=true, simT0=performance.now();
@@ -667,8 +872,10 @@ function drawSim(){
   const el=(performance.now()-simT0)/1000;
   let pr=Math.min(1,el/SIM_DUR);
   if(simAuto&&el>=SIM_DUR){simGo(1);pr=0;}
-  SCENES[simIdx].draw(performance.now()/1000,pr);
+  const tt=performance.now()/1000;
+  SCENES[simIdx].draw(tt,pr);
   blitSim();
+  if(SCENES[simIdx].act) SCENES[simIdx].act(tt,pr);
 }
 applyMode('pattern');
 
